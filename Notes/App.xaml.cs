@@ -49,7 +49,7 @@ public partial class App : Application
 
     protected override Window CreateWindow(IActivationState? activationState)
     {
-        _mainWindow = new Window(new MainPage()) { Title = "Notes (Build 2025.12.26.B)" };
+        _mainWindow = new Window(new MainPage()) { Title = "Notes (Build 2025.12.26.C)" };
 
 #if WINDOWS
         _mainWindow.Created += (s, e) =>

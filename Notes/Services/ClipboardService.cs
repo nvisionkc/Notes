@@ -61,6 +61,12 @@ public class ClipboardService : IDisposable
     {
         try
         {
+            // Skip if our window is the foreground window (copy came from within the app)
+            if (GetForegroundWindow() == _hWnd)
+            {
+                return;
+            }
+
             if (OpenClipboard(_hWnd))
             {
                 try
@@ -367,5 +373,8 @@ public class ClipboardService : IDisposable
 
     [DllImport("user32.dll")]
     private static extern IntPtr CallWindowProc(IntPtr lpPrevWndFunc, IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
 }
 #endif

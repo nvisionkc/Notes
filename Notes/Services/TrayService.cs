@@ -11,6 +11,15 @@ public class TrayService : IDisposable
     private const int WM_TRAYICON = WM_USER + 1;
     private const int WM_LBUTTONDBLCLK = 0x0203;
     private const int WM_RBUTTONUP = 0x0205;
+    private const int WM_HOTKEY = 0x0312;
+
+    // Hotkey modifiers
+    private const int MOD_SHIFT = 0x0004;
+    private const int MOD_WIN = 0x0008;
+    private const int MOD_NOREPEAT = 0x4000;
+
+    // Hotkey ID
+    private const int HOTKEY_ID = 1;
     private const int NIM_ADD = 0x00;
     private const int NIM_DELETE = 0x02;
     private const int NIF_MESSAGE = 0x01;
@@ -89,10 +98,20 @@ public class TrayService : IDisposable
         };
 
         _iconAdded = Shell_NotifyIcon(NIM_ADD, ref _nid);
+
+        // Register global hotkey: Win+Shift+N
+        RegisterHotKey(_hWnd, HOTKEY_ID, MOD_WIN | MOD_SHIFT | MOD_NOREPEAT, 0x4E); // 0x4E = 'N'
     }
 
     private IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
     {
+        if (msg == WM_HOTKEY && wParam.ToInt32() == HOTKEY_ID)
+        {
+            // Win+Shift+N pressed - show/focus the window
+            ShowWindow();
+            return IntPtr.Zero;
+        }
+
         if (msg == WM_TRAYICON)
         {
             int eventType = lParam.ToInt32() & 0xFFFF;
@@ -151,6 +170,9 @@ public class TrayService : IDisposable
 
     public void Dispose()
     {
+        // Unregister global hotkey
+        UnregisterHotKey(_hWnd, HOTKEY_ID);
+
         if (_iconAdded)
         {
             Shell_NotifyIcon(NIM_DELETE, ref _nid);
@@ -193,6 +215,12 @@ public class TrayService : IDisposable
 
     [DllImport("user32.dll")]
     private static extern IntPtr CallWindowProc(IntPtr lpPrevWndFunc, IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern bool RegisterHotKey(IntPtr hWnd, int id, int fsModifiers, int vk);
+
+    [DllImport("user32.dll")]
+    private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct POINT

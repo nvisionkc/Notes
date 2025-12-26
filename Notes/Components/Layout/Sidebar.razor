@@ -13,9 +13,14 @@
         {
             <div class="note-item @(note.Id == SelectedNoteId ? "selected" : "")"
                  @onclick="() => SelectNote(note.Id)">
-                <div class="note-title">@note.Title</div>
-                <div class="note-preview">@note.Preview</div>
-                <div class="note-date">@note.ModifiedAt.ToLocalTime().ToString("MMM d, yyyy")</div>
+                <div class="note-content">
+                    <div class="note-title">@note.Title</div>
+                    <div class="note-preview">@note.Preview</div>
+                    <div class="note-date">@note.ModifiedAt.ToLocalTime().ToString("MMM d, yyyy")</div>
+                </div>
+                <button class="btn-delete" @onclick="() => DeleteNote(note.Id)" @onclick:stopPropagation="true" title="Delete note">
+                    <span class="icon">×</span>
+                </button>
             </div>
         }
 
@@ -33,6 +38,7 @@
     [Parameter] public int? SelectedNoteId { get; set; }
     [Parameter] public EventCallback<int?> SelectedNoteIdChanged { get; set; }
     [Parameter] public EventCallback OnNewNote { get; set; }
+    [Parameter] public EventCallback<int> OnNoteDeleted { get; set; }
 
     private List<Note> _notes = new();
 
@@ -55,5 +61,12 @@
     private async Task CreateNewNote()
     {
         await OnNewNote.InvokeAsync();
+    }
+
+    private async Task DeleteNote(int id)
+    {
+        await NoteService.DeleteNoteAsync(id);
+        await OnNoteDeleted.InvokeAsync(id);
+        await RefreshNotesAsync();
     }
 }

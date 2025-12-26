@@ -44,6 +44,7 @@
         {
             Layout.NoteSelectionChanged += OnNoteSelected;
             Layout.NewNoteRequested += OnNewNoteRequested;
+            Layout.NoteDeleteRequested += OnNoteDeleted;
             Layout.ClipboardConvertRequested += OnClipboardConvert;
             Layout.ClipboardItemSelected += OnClipboardItemSelected;
         }
@@ -98,6 +99,15 @@
     private async Task OnNewNoteRequested()
     {
         await CreateNewNote();
+    }
+
+    private async Task OnNoteDeleted(int noteId)
+    {
+        if (_currentNote.Id == noteId)
+        {
+            // The current note was deleted, create a new one
+            await CreateNewNote();
+        }
     }
 
     private async Task OnClipboardConvert(string content, bool isImage)
@@ -243,6 +253,7 @@
         {
             Layout.NoteSelectionChanged -= OnNoteSelected;
             Layout.NewNoteRequested -= OnNewNoteRequested;
+            Layout.NoteDeleteRequested -= OnNoteDeleted;
             Layout.ClipboardConvertRequested -= OnClipboardConvert;
             Layout.ClipboardItemSelected -= OnClipboardItemSelected;
         }

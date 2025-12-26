@@ -20,7 +20,8 @@
             <Sidebar @ref="_sidebar"
                      SelectedNoteId="@SelectedNoteId"
                      SelectedNoteIdChanged="OnNoteSelected"
-                     OnNewNote="OnNewNote" />
+                     OnNewNote="OnNewNote"
+                     OnNoteDeleted="OnNoteDeleted" />
         }
         else
         {
@@ -43,6 +44,7 @@
     public string ActiveTab { get; private set; } = "notes";
     public event Func<int?, Task>? NoteSelectionChanged;
     public event Func<Task>? NewNoteRequested;
+    public event Func<int, Task>? NoteDeleteRequested;
     public event Func<string, bool, Task>? ClipboardConvertRequested;
     public event Func<string, bool, Task>? ClipboardItemSelected;
 
@@ -113,6 +115,18 @@
         if (NewNoteRequested != null)
         {
             await NewNoteRequested.Invoke();
+        }
+    }
+
+    private async Task OnNoteDeleted(int noteId)
+    {
+        if (SelectedNoteId == noteId)
+        {
+            SelectedNoteId = null;
+        }
+        if (NoteDeleteRequested != null)
+        {
+            await NoteDeleteRequested.Invoke(noteId);
         }
     }
 

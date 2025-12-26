@@ -27,6 +27,7 @@
             <ClipboardHistory OnConvertToNote="ConvertClipboardToNote"
                               OnItemSelected="OnClipboardItemSelected" />
         }
+
     </div>
 
     <main class="main-content">
@@ -42,8 +43,8 @@
     public string ActiveTab { get; private set; } = "notes";
     public event Func<int?, Task>? NoteSelectionChanged;
     public event Func<Task>? NewNoteRequested;
-    public event Func<string, Task>? ClipboardConvertRequested;
-    public event Func<string, Task>? ClipboardItemSelected;
+    public event Func<string, bool, Task>? ClipboardConvertRequested;
+    public event Func<string, bool, Task>? ClipboardItemSelected;
 
 #if WINDOWS
     [Inject] private Notes.Services.ClipboardService? ClipboardService { get; set; }
@@ -79,7 +80,7 @@
                 // Trigger the item to be displayed
                 if (ClipboardItemSelected != null)
                 {
-                    await ClipboardItemSelected.Invoke(item.Content);
+                    await ClipboardItemSelected.Invoke(item.Content, item.IsImage);
                 }
             }
 #endif
@@ -115,22 +116,22 @@
         }
     }
 
-    private async Task ConvertClipboardToNote(string content)
+    private async Task ConvertClipboardToNote((string Content, bool IsImage) data)
     {
         ActiveTab = "notes";
         SelectedNoteId = null;
         if (ClipboardConvertRequested != null)
         {
-            await ClipboardConvertRequested.Invoke(content);
+            await ClipboardConvertRequested.Invoke(data.Content, data.IsImage);
         }
         StateHasChanged();
     }
 
-    private async Task OnClipboardItemSelected(string content)
+    private async Task OnClipboardItemSelected((string Content, bool IsImage) data)
     {
         if (ClipboardItemSelected != null)
         {
-            await ClipboardItemSelected.Invoke(content);
+            await ClipboardItemSelected.Invoke(data.Content, data.IsImage);
         }
     }
 

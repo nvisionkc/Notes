@@ -26,7 +26,11 @@
 
         <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
         <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    </PropertyGroup>
 
+    <!-- Single-instance support: disable auto-generated Main for all Windows configurations -->
+    <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
+        <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
     </PropertyGroup>
 
     <ItemGroup>

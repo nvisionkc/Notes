@@ -1,4 +1,6 @@
 #if WINDOWS
+using System.Drawing;
+using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using Microsoft.Toolkit.Uwp.Notifications;
 using WinUIWindow = Microsoft.UI.Xaml.Window;
@@ -128,8 +130,8 @@ public class ClipboardService : IDisposable
                 Marshal.Copy(pDib, dibData, 0, size);
 
                 // Convert DIB to BMP by adding file header
-                using var ms = new MemoryStream();
-                using var bw = new BinaryWriter(ms);
+                using var bmpStream = new MemoryStream();
+                using var bw = new BinaryWriter(bmpStream);
 
                 // BMP file header (14 bytes)
                 bw.Write((byte)'B');
@@ -156,7 +158,12 @@ public class ClipboardService : IDisposable
                 bw.Write(dibData);
                 bw.Flush();
 
-                return Convert.ToBase64String(ms.ToArray());
+                // Convert BMP to PNG for better browser compatibility
+                bmpStream.Position = 0;
+                using var bitmap = new Bitmap(bmpStream);
+                using var pngStream = new MemoryStream();
+                bitmap.Save(pngStream, System.Drawing.Imaging.ImageFormat.Png);
+                return Convert.ToBase64String(pngStream.ToArray());
             }
             finally
             {

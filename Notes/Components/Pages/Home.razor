@@ -100,12 +100,22 @@
         await CreateNewNote();
     }
 
-    private async Task OnClipboardConvert(string content)
+    private async Task OnClipboardConvert(string content, bool isImage)
     {
         await SaveIfDirty();
         _isViewingClipboard = false;
         _currentNote = await NoteService.CreateNoteAsync();
-        _currentNote.Content = $"<p>{System.Net.WebUtility.HtmlEncode(content).Replace("\n", "</p><p>")}</p>";
+
+        if (isImage)
+        {
+            // Insert image with empty paragraphs before and after for text entry
+            _currentNote.Content = $"<p><br></p><p><img src=\"data:image/png;base64,{content}\" style=\"max-width: 100%;\" /></p><p><br></p>";
+        }
+        else
+        {
+            _currentNote.Content = $"<p>{System.Net.WebUtility.HtmlEncode(content).Replace("\n", "</p><p>")}</p>";
+        }
+
         _originalContent = "";
         _lastSaved = null;
         await InvokeAsync(StateHasChanged);
@@ -117,14 +127,22 @@
         }
     }
 
-    private async Task OnClipboardItemSelected(string content)
+    private async Task OnClipboardItemSelected(string content, bool isImage)
     {
         await SaveIfDirty();
         _isViewingClipboard = true;
-        _currentNote = new Note
+
+        string displayContent;
+        if (isImage)
         {
-            Content = $"<p>{System.Net.WebUtility.HtmlEncode(content).Replace("\n", "</p><p>")}</p>"
-        };
+            displayContent = $"<p><img src=\"data:image/png;base64,{content}\" style=\"max-width: 100%;\" /></p>";
+        }
+        else
+        {
+            displayContent = $"<p>{System.Net.WebUtility.HtmlEncode(content).Replace("\n", "</p><p>")}</p>";
+        }
+
+        _currentNote = new Note { Content = displayContent };
         _originalContent = _currentNote.Content;
         _lastSaved = null;
         await InvokeAsync(StateHasChanged);

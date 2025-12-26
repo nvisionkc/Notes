@@ -9,10 +9,13 @@ A fast, lightweight note-taking app for Windows with clipboard history integrati
 ## Features
 
 - **Rich Text Editing** - Bold, italic, underline, lists, and headings
-- **Clipboard History** - Automatically captures copied text (last 20 items)
+- **Clipboard History** - Automatically captures copied text and images (last 20 items)
+- **Image Support** - Screenshot capture, preview, and convert to editable notes
 - **Toast Notifications** - Click notifications to view captured clipboard content
 - **Auto-Save** - Notes save automatically, never lose your work
-- **System Tray** - Runs quietly in the background
+- **System Tray** - Runs quietly in the background, starts minimized
+- **Single Instance** - Only one window, re-launching focuses existing window
+- **Global Hotkey** - Win+Shift+N to open/focus from anywhere
 - **Dark/Light Mode** - Follows your Windows theme
 - **Keyboard Shortcuts** - Ctrl+S to save, Ctrl+N for new note
 

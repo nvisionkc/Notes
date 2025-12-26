@@ -65,6 +65,9 @@ public partial class App : Application
                 _clipboardService = Handler?.MauiContext?.Services.GetService<ClipboardService>();
                 _clipboardService?.Initialize(nativeWindow);
 
+                // Start minimized to tray
+                _trayService.HideWindow();
+
                 // When user clicks Exit in tray menu
                 _trayService.ExitRequested += async () =>
                 {

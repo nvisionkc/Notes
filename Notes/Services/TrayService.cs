@@ -168,6 +168,11 @@ public class TrayService : IDisposable
         ShowWindowRequested?.Invoke();
     }
 
+    public void HideWindow()
+    {
+        _appWindow?.Hide();
+    }
+
     public void Dispose()
     {
         // Unregister global hotkey

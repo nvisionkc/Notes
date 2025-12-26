@@ -59,11 +59,23 @@ public class ClipboardService : IDisposable
     {
         try
         {
-            // Try to get text from clipboard
             if (OpenClipboard(_hWnd))
             {
                 try
                 {
+                    // Check for image first
+                    if (IsClipboardFormatAvailable(CF_DIB))
+                    {
+                        var imageData = GetClipboardImageAsBase64();
+                        if (!string.IsNullOrEmpty(imageData) && imageData != _lastClipboardText)
+                        {
+                            _lastClipboardText = imageData;
+                            AddImageToHistory(imageData);
+                            return;
+                        }
+                    }
+
+                    // Try to get text from clipboard
                     IntPtr hData = GetClipboardData(CF_UNICODETEXT);
                     if (hData != IntPtr.Zero)
                     {
@@ -96,6 +108,99 @@ public class ClipboardService : IDisposable
         {
             // Ignore clipboard errors
         }
+    }
+
+    private string? GetClipboardImageAsBase64()
+    {
+        try
+        {
+            IntPtr hDib = GetClipboardData(CF_DIB);
+            if (hDib == IntPtr.Zero) return null;
+
+            IntPtr pDib = GlobalLock(hDib);
+            if (pDib == IntPtr.Zero) return null;
+
+            try
+            {
+                // Get DIB size
+                int size = (int)GlobalSize(hDib);
+                byte[] dibData = new byte[size];
+                Marshal.Copy(pDib, dibData, 0, size);
+
+                // Convert DIB to BMP by adding file header
+                using var ms = new MemoryStream();
+                using var bw = new BinaryWriter(ms);
+
+                // BMP file header (14 bytes)
+                bw.Write((byte)'B');
+                bw.Write((byte)'M');
+                bw.Write(14 + size); // File size
+                bw.Write((short)0); // Reserved
+                bw.Write((short)0); // Reserved
+
+                // Calculate offset to pixel data (header + DIB header size)
+                int dibHeaderSize = BitConverter.ToInt32(dibData, 0);
+                int colorTableSize = 0;
+                if (dibHeaderSize >= 40)
+                {
+                    int bitCount = BitConverter.ToInt16(dibData, 14);
+                    if (bitCount <= 8)
+                    {
+                        int colorsUsed = BitConverter.ToInt32(dibData, 32);
+                        colorTableSize = (colorsUsed == 0 ? (1 << bitCount) : colorsUsed) * 4;
+                    }
+                }
+                bw.Write(14 + dibHeaderSize + colorTableSize); // Offset to pixel data
+
+                // Write DIB data
+                bw.Write(dibData);
+                bw.Flush();
+
+                return Convert.ToBase64String(ms.ToArray());
+            }
+            finally
+            {
+                GlobalUnlock(hDib);
+            }
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private void AddImageToHistory(string base64Image)
+    {
+        // Check for duplicate (same image)
+        var existing = _clipboardHistory.FirstOrDefault(x => x.IsImage && x.Content == base64Image);
+        if (existing != null)
+        {
+            _clipboardHistory.Remove(existing);
+            existing.CopiedAt = DateTime.Now;
+            _clipboardHistory.Insert(0, existing);
+        }
+        else
+        {
+            var item = new ClipboardItem
+            {
+                Id = _nextId++,
+                Content = base64Image,
+                Preview = "Image",
+                CopiedAt = DateTime.Now,
+                IsImage = true
+            };
+
+            _clipboardHistory.Insert(0, item);
+
+            while (_clipboardHistory.Count > MaxItems)
+            {
+                _clipboardHistory.RemoveAt(_clipboardHistory.Count - 1);
+            }
+
+            ShowClipboardNotification(item.Id, "Image copied to clipboard");
+        }
+
+        ClipboardChanged?.Invoke();
     }
 
     private void AddToHistory(string text)
@@ -212,6 +317,8 @@ public class ClipboardService : IDisposable
 
     // P/Invoke
     private const uint CF_UNICODETEXT = 13;
+    private const uint CF_DIB = 8;
+    private const uint CF_BITMAP = 2;
 
     private delegate IntPtr NativeWindowProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
@@ -241,6 +348,12 @@ public class ClipboardService : IDisposable
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool GlobalUnlock(IntPtr hMem);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern UIntPtr GlobalSize(IntPtr hMem);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsClipboardFormatAvailable(uint format);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);

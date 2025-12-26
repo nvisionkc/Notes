@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="456" height="456" viewBox="0 0 456 456" xmlns="http://www.w3.org/2000/svg">
+    <!-- Notepad page with folded corner -->
+    <path d="M 98 68 L 358 68 L 358 338 L 308 388 L 98 388 Z"
+          fill="#FFFFFF" stroke="#4A4A4A" stroke-width="8"/>
+
+    <!-- Folded corner -->
+    <path d="M 308 388 L 308 338 L 358 338 Z"
+          fill="#E0E0E0" stroke="#4A4A4A" stroke-width="8"/>
+
+    <!-- Text lines -->
+    <line x1="130" y1="140" x2="326" y2="140" stroke="#4A4A4A" stroke-width="12" stroke-linecap="round"/>
+    <line x1="130" y1="190" x2="326" y2="190" stroke="#4A4A4A" stroke-width="12" stroke-linecap="round"/>
+    <line x1="130" y1="240" x2="280" y2="240" stroke="#4A4A4A" stroke-width="12" stroke-linecap="round"/>
+    <line x1="130" y1="290" x2="250" y2="290" stroke="#4A4A4A" stroke-width="12" stroke-linecap="round"/>
+</svg>

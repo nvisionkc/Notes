@@ -1,0 +1,75 @@
+# Build results
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Rider
+.idea/
+
+# VS Code
+.vscode/
+
+# NuGet
+*.nupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+
+# Build outputs
+publish/
+installer/
+*.zip
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# User-specific files
+*.rsuser
+*.dbmdl
+*.jfm
+
+# Test results
+[Tt]est[Rr]esult*/
+*.trx
+
+# Coverage
+*.coverage
+*.coveragexml
+
+# NCrunch
+_NCrunch_*
+.*crunch*.local.xml
+nCrunchTemp_*
+
+# Chutzpah
+_Chutzpah*
+
+# Installshield
+[Ee]xpress/
+
+# Windows Store
+AppPackages/
+BundleArtifacts/
+Package.StoreAssociation.xml
+_pkginfo.txt
+*.appx
+*.appxbundle
+*.appxupload
+
+# MAUI / .NET
+*.mdb
+*.lck

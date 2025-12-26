@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notes - Quick Note-Taking App</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+        }
+        .container { max-width: 800px; width: 100%; text-align: center; }
+        .logo {
+            font-size: 72px;
+            margin-bottom: 20px;
+        }
+        h1 {
+            font-size: 48px;
+            font-weight: 300;
+            margin-bottom: 10px;
+        }
+        .tagline {
+            font-size: 20px;
+            color: #a0a0a0;
+            margin-bottom: 40px;
+        }
+        .install-section {
+            background: rgba(255,255,255,0.05);
+            border-radius: 16px;
+            padding: 40px;
+            margin-bottom: 40px;
+        }
+        .install-title {
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #888;
+            margin-bottom: 20px;
+        }
+        .install-cmd {
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 20px;
+            font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+            font-size: 14px;
+            color: #58a6ff;
+            word-break: break-all;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+        .install-cmd:hover {
+            border-color: #58a6ff;
+            background: #161b22;
+        }
+        .install-cmd::after {
+            content: 'Click to copy';
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 11px;
+            color: #666;
+        }
+        .install-cmd.copied::after {
+            content: 'Copied!';
+            color: #3fb950;
+        }
+        .divider {
+            color: #444;
+            margin: 30px 0;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        .divider::before, .divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: #333;
+        }
+        .download-btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #FFD93D 0%, #FF6B6B 100%);
+            color: #1a1a1a;
+            font-weight: 600;
+            padding: 16px 40px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-size: 16px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .download-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 40px rgba(255, 217, 61, 0.3);
+        }
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            text-align: left;
+            margin-top: 60px;
+        }
+        .feature {
+            background: rgba(255,255,255,0.03);
+            border-radius: 12px;
+            padding: 24px;
+        }
+        .feature-icon { font-size: 28px; margin-bottom: 12px; }
+        .feature h3 { font-size: 16px; margin-bottom: 8px; }
+        .feature p { font-size: 14px; color: #888; line-height: 1.5; }
+        .footer {
+            margin-top: 60px;
+            color: #555;
+            font-size: 14px;
+        }
+        .requirements {
+            margin-top: 40px;
+            font-size: 13px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">📝</div>
+        <h1>Notes</h1>
+        <p class="tagline">Quick note-taking with clipboard history</p>
+
+        <div class="install-section">
+            <div class="install-title">Quick Install (PowerShell)</div>
+            <div class="install-cmd" onclick="copyCommand(this)">
+                irm https://YOURSITE.com/notes/install.ps1 | iex
+            </div>
+
+            <div class="divider">or</div>
+
+            <a href="Notes-Installer.zip" class="download-btn">
+                Download Installer (98 MB)
+            </a>
+        </div>
+
+        <div class="features">
+            <div class="feature">
+                <div class="feature-icon">✍️</div>
+                <h3>Rich Text Editing</h3>
+                <p>Bold, italic, lists, headings - format your notes your way</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">📋</div>
+                <h3>Clipboard History</h3>
+                <p>Automatically captures everything you copy, easily convert to notes</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">🔔</div>
+                <h3>Toast Notifications</h3>
+                <p>Get notified when text is copied, click to view instantly</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">💾</div>
+                <h3>Auto-Save</h3>
+                <p>Never lose your work - notes save automatically</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">🌙</div>
+                <h3>Dark Mode</h3>
+                <p>Follows your Windows theme automatically</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">📌</div>
+                <h3>System Tray</h3>
+                <p>Runs quietly in the background, always ready</p>
+            </div>
+        </div>
+
+        <div class="requirements">
+            <strong>Requirements:</strong> Windows 10 version 1903 or later
+        </div>
+
+        <div class="footer">
+            Made with ❤️ using .NET MAUI Blazor
+        </div>
+    </div>
+
+    <script>
+        function copyCommand(el) {
+            const text = el.innerText.trim();
+            navigator.clipboard.writeText(text);
+            el.classList.add('copied');
+            setTimeout(() => el.classList.remove('copied'), 2000);
+        }
+    </script>
+</body>
+</html>

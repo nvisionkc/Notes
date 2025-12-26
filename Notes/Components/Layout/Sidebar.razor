@@ -1,0 +1,59 @@
+@inject INoteService NoteService
+
+<aside class="sidebar">
+    <div class="sidebar-header">
+        <h2>Notes</h2>
+        <button class="btn-new" @onclick="CreateNewNote" title="New Note (Ctrl+N)">
+            <span class="icon">+</span>
+        </button>
+    </div>
+
+    <div class="notes-list">
+        @foreach (var note in _notes)
+        {
+            <div class="note-item @(note.Id == SelectedNoteId ? "selected" : "")"
+                 @onclick="() => SelectNote(note.Id)">
+                <div class="note-title">@note.Title</div>
+                <div class="note-preview">@note.Preview</div>
+                <div class="note-date">@note.ModifiedAt.ToLocalTime().ToString("MMM d, yyyy")</div>
+            </div>
+        }
+
+        @if (!_notes.Any())
+        {
+            <div class="empty-state">
+                <p>No notes yet.</p>
+                <p>Click + to create one.</p>
+            </div>
+        }
+    </div>
+</aside>
+
+@code {
+    [Parameter] public int? SelectedNoteId { get; set; }
+    [Parameter] public EventCallback<int?> SelectedNoteIdChanged { get; set; }
+    [Parameter] public EventCallback OnNewNote { get; set; }
+
+    private List<Note> _notes = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshNotesAsync();
+    }
+
+    public async Task RefreshNotesAsync()
+    {
+        _notes = await NoteService.GetAllNotesAsync();
+        StateHasChanged();
+    }
+
+    private async Task SelectNote(int id)
+    {
+        await SelectedNoteIdChanged.InvokeAsync(id);
+    }
+
+    private async Task CreateNewNote()
+    {
+        await OnNewNote.InvokeAsync();
+    }
+}

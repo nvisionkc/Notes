@@ -1,0 +1,161 @@
+@inherits LayoutComponentBase
+@inject IThemeService ThemeService
+@implements IDisposable
+
+<div class="app-container @ThemeClass">
+    <div class="sidebar-panel">
+        <div class="tab-bar">
+            <button class="tab @(ActiveTab == "notes" ? "active" : "")"
+                    @onclick="@(() => SetActiveTab("notes"))">
+                Notes
+            </button>
+            <button class="tab @(ActiveTab == "clipboard" ? "active" : "")"
+                    @onclick="@(() => SetActiveTab("clipboard"))">
+                Clipboard
+            </button>
+        </div>
+
+        @if (ActiveTab == "notes")
+        {
+            <Sidebar @ref="_sidebar"
+                     SelectedNoteId="@SelectedNoteId"
+                     SelectedNoteIdChanged="OnNoteSelected"
+                     OnNewNote="OnNewNote" />
+        }
+        else
+        {
+            <ClipboardHistory OnConvertToNote="ConvertClipboardToNote"
+                              OnItemSelected="OnClipboardItemSelected" />
+        }
+    </div>
+
+    <main class="main-content">
+        <CascadingValue Value="this">
+            @Body
+        </CascadingValue>
+    </main>
+</div>
+
+@code {
+    private Sidebar? _sidebar;
+    public int? SelectedNoteId { get; private set; }
+    public string ActiveTab { get; private set; } = "notes";
+    public event Func<int?, Task>? NoteSelectionChanged;
+    public event Func<Task>? NewNoteRequested;
+    public event Func<string, Task>? ClipboardConvertRequested;
+    public event Func<string, Task>? ClipboardItemSelected;
+
+#if WINDOWS
+    [Inject] private Notes.Services.ClipboardService? ClipboardService { get; set; }
+#endif
+
+    private string ThemeClass => ThemeService.IsDarkMode ? "dark-theme" : "light-theme";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ThemeService.InitializeAsync();
+        ThemeService.ThemeChanged += OnThemeChanged;
+
+#if WINDOWS
+        if (ClipboardService != null)
+        {
+            ClipboardService.NotificationClicked += OnNotificationClicked;
+        }
+#endif
+    }
+
+    private void OnNotificationClicked(int clipboardId)
+    {
+        InvokeAsync(async () =>
+        {
+#if WINDOWS
+            var item = ClipboardService?.GetItemById(clipboardId);
+            if (item != null)
+            {
+                // Switch to clipboard tab and display content
+                ActiveTab = "clipboard";
+                StateHasChanged();
+
+                // Trigger the item to be displayed
+                if (ClipboardItemSelected != null)
+                {
+                    await ClipboardItemSelected.Invoke(item.Content);
+                }
+            }
+#endif
+        });
+    }
+
+    private void OnThemeChanged(bool isDark)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void SetActiveTab(string tab)
+    {
+        ActiveTab = tab;
+        StateHasChanged();
+    }
+
+    private async Task OnNoteSelected(int? noteId)
+    {
+        SelectedNoteId = noteId;
+        if (NoteSelectionChanged != null)
+        {
+            await NoteSelectionChanged.Invoke(noteId);
+        }
+    }
+
+    private async Task OnNewNote()
+    {
+        SelectedNoteId = null;
+        if (NewNoteRequested != null)
+        {
+            await NewNoteRequested.Invoke();
+        }
+    }
+
+    private async Task ConvertClipboardToNote(string content)
+    {
+        ActiveTab = "notes";
+        SelectedNoteId = null;
+        if (ClipboardConvertRequested != null)
+        {
+            await ClipboardConvertRequested.Invoke(content);
+        }
+        StateHasChanged();
+    }
+
+    private async Task OnClipboardItemSelected(string content)
+    {
+        if (ClipboardItemSelected != null)
+        {
+            await ClipboardItemSelected.Invoke(content);
+        }
+    }
+
+    public async Task RefreshSidebar()
+    {
+        if (_sidebar != null)
+        {
+            await _sidebar.RefreshNotesAsync();
+        }
+    }
+
+    public void SetSelectedNoteId(int id)
+    {
+        SelectedNoteId = id;
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        ThemeService.ThemeChanged -= OnThemeChanged;
+#if WINDOWS
+        if (ClipboardService != null)
+        {
+            ClipboardService.NotificationClicked -= OnNotificationClicked;
+        }
+#endif
+    }
+}

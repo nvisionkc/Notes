@@ -1,0 +1,232 @@
+@page "/"
+@inject INoteService NoteService
+@inject IJSRuntime JS
+@inject SaveOnCloseService SaveOnCloseService
+@implements IDisposable
+
+<div class="note-editor-page" tabindex="0">
+    <RichTextEditor @ref="_editor"
+                    Content="@_currentNote.Content"
+                    ContentChanged="OnContentChanged" />
+
+    @if (_isSaving)
+    {
+        <div class="save-indicator">Saving...</div>
+    }
+    else if (_lastSaved.HasValue)
+    {
+        <div class="save-indicator saved">
+            Saved @_lastSaved.Value.ToLocalTime().ToString("h:mm tt")
+        </div>
+    }
+</div>
+
+@code {
+    private RichTextEditor? _editor;
+    private Note _currentNote = new();
+    private string _originalContent = string.Empty;
+    private bool _isSaving;
+    private DateTime? _lastSaved;
+    private System.Timers.Timer? _autoSaveTimer;
+    private IJSObjectReference? _jsModule;
+    private bool _isViewingClipboard;
+
+    [CascadingParameter] public MainLayout? Layout { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Create a new note on startup
+        _currentNote = await NoteService.CreateNoteAsync();
+        _originalContent = _currentNote.Content;
+
+        // Subscribe to layout events
+        if (Layout != null)
+        {
+            Layout.NoteSelectionChanged += OnNoteSelected;
+            Layout.NewNoteRequested += OnNewNoteRequested;
+            Layout.ClipboardConvertRequested += OnClipboardConvert;
+            Layout.ClipboardItemSelected += OnClipboardItemSelected;
+        }
+
+        // Setup auto-save timer (every 30 seconds)
+        _autoSaveTimer = new System.Timers.Timer(30000);
+        _autoSaveTimer.Elapsed += async (_, _) => await AutoSave();
+        _autoSaveTimer.Start();
+
+        // Subscribe to save on close
+        SaveOnCloseService.SaveRequested += OnSaveRequested;
+    }
+
+    private async Task OnSaveRequested()
+    {
+        await SaveIfDirty();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Setup keyboard shortcuts
+            _jsModule = await JS.InvokeAsync<IJSObjectReference>(
+                "import", "./js/editor-interop.js");
+            var dotNetRef = DotNetObjectReference.Create(this);
+            await _jsModule.InvokeVoidAsync("setupKeyboardHandler", dotNetRef);
+        }
+    }
+
+    [JSInvokable]
+    public async Task HandleSaveShortcut()
+    {
+        await SaveCurrentNote();
+    }
+
+    [JSInvokable]
+    public async Task HandleNewShortcut()
+    {
+        await CreateNewNote();
+    }
+
+    private async Task OnNoteSelected(int? noteId)
+    {
+        if (noteId.HasValue)
+        {
+            await SaveIfDirty();
+            await LoadNote(noteId.Value);
+        }
+    }
+
+    private async Task OnNewNoteRequested()
+    {
+        await CreateNewNote();
+    }
+
+    private async Task OnClipboardConvert(string content)
+    {
+        await SaveIfDirty();
+        _isViewingClipboard = false;
+        _currentNote = await NoteService.CreateNoteAsync();
+        _currentNote.Content = $"<p>{System.Net.WebUtility.HtmlEncode(content).Replace("\n", "</p><p>")}</p>";
+        _originalContent = "";
+        _lastSaved = null;
+        await InvokeAsync(StateHasChanged);
+
+        // Focus the editor
+        if (_editor != null)
+        {
+            await _editor.Focus();
+        }
+    }
+
+    private async Task OnClipboardItemSelected(string content)
+    {
+        await SaveIfDirty();
+        _isViewingClipboard = true;
+        _currentNote = new Note
+        {
+            Content = $"<p>{System.Net.WebUtility.HtmlEncode(content).Replace("\n", "</p><p>")}</p>"
+        };
+        _originalContent = _currentNote.Content;
+        _lastSaved = null;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadNote(int noteId)
+    {
+        var note = await NoteService.GetNoteAsync(noteId);
+        if (note != null)
+        {
+            _isViewingClipboard = false;
+            _currentNote = note;
+            _originalContent = note.Content;
+            _lastSaved = null;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task CreateNewNote()
+    {
+        await SaveIfDirty();
+        _isViewingClipboard = false;
+        _currentNote = await NoteService.CreateNoteAsync();
+        _originalContent = _currentNote.Content;
+        _lastSaved = null;
+        await InvokeAsync(StateHasChanged);
+
+        // Focus the editor
+        if (_editor != null)
+        {
+            await _editor.Focus();
+        }
+    }
+
+    private void OnContentChanged(string content)
+    {
+        _currentNote.Content = content;
+    }
+
+    private async Task SaveCurrentNote()
+    {
+        // Don't save empty notes or clipboard items
+        if (string.IsNullOrWhiteSpace(_currentNote.Content)) return;
+        if (_isViewingClipboard) return;
+
+        _isSaving = true;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            await NoteService.SaveNoteAsync(_currentNote);
+            _originalContent = _currentNote.Content;
+            _lastSaved = DateTime.Now;
+
+            // Update the sidebar and set the selected note
+            if (Layout != null)
+            {
+                Layout.SetSelectedNoteId(_currentNote.Id);
+                await Layout.RefreshSidebar();
+            }
+        }
+        finally
+        {
+            _isSaving = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task SaveIfDirty()
+    {
+        if (HasChanges() && !string.IsNullOrWhiteSpace(_currentNote.Content))
+        {
+            await SaveCurrentNote();
+        }
+    }
+
+    private async Task AutoSave()
+    {
+        if (HasChanges())
+        {
+            await InvokeAsync(async () => await SaveCurrentNote());
+        }
+    }
+
+    private bool HasChanges()
+    {
+        return _currentNote.Content != _originalContent;
+    }
+
+    public void Dispose()
+    {
+        _autoSaveTimer?.Stop();
+        _autoSaveTimer?.Dispose();
+
+        SaveOnCloseService.SaveRequested -= OnSaveRequested;
+
+        if (Layout != null)
+        {
+            Layout.NoteSelectionChanged -= OnNoteSelected;
+            Layout.NewNoteRequested -= OnNewNoteRequested;
+            Layout.ClipboardConvertRequested -= OnClipboardConvert;
+            Layout.ClipboardItemSelected -= OnClipboardItemSelected;
+        }
+    }
+}

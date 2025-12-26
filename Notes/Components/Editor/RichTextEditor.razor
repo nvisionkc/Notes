@@ -1,0 +1,119 @@
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div class="editor-container">
+    <div class="editor-toolbar">
+        <button @onclick="@(() => ExecCommand("bold"))" title="Bold (Ctrl+B)">
+            <strong>B</strong>
+        </button>
+        <button @onclick="@(() => ExecCommand("italic"))" title="Italic (Ctrl+I)">
+            <em>I</em>
+        </button>
+        <button @onclick="@(() => ExecCommand("underline"))" title="Underline (Ctrl+U)">
+            <u>U</u>
+        </button>
+        <span class="separator"></span>
+        <button @onclick="@(() => ExecCommand("insertUnorderedList"))" title="Bullet List">
+            &#8226; List
+        </button>
+        <button @onclick="@(() => ExecCommand("insertOrderedList"))" title="Numbered List">
+            1. List
+        </button>
+        <span class="separator"></span>
+        <select @onchange="HandleHeadingChange">
+            <option value="">Normal</option>
+            <option value="h1">Heading 1</option>
+            <option value="h2">Heading 2</option>
+            <option value="h3">Heading 3</option>
+        </select>
+    </div>
+
+    <div id="@_editorId"
+         class="editor-content"
+         contenteditable="true"
+         @oninput="HandleInput">
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Content { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> ContentChanged { get; set; }
+
+    private readonly string _editorId = $"editor-{Guid.NewGuid():N}";
+    private IJSObjectReference? _module;
+    private bool _isInitialized;
+    private string _lastSetContent = string.Empty;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>(
+                "import", "./js/editor-interop.js");
+            await _module.InvokeVoidAsync("initEditor", _editorId, Content);
+            _lastSetContent = Content;
+            _isInitialized = true;
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_isInitialized && _module != null && Content != _lastSetContent)
+        {
+            await _module.InvokeVoidAsync("setContent", _editorId, Content);
+            _lastSetContent = Content;
+        }
+    }
+
+    private async Task ExecCommand(string command)
+    {
+        if (_module != null)
+        {
+            await _module.InvokeVoidAsync("execCommand", command);
+            await _module.InvokeVoidAsync("focusEditor", _editorId);
+            await UpdateContent();
+        }
+    }
+
+    private async Task HandleHeadingChange(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        if (!string.IsNullOrEmpty(value) && _module != null)
+        {
+            await _module.InvokeVoidAsync("formatBlock", value);
+            await _module.InvokeVoidAsync("focusEditor", _editorId);
+            await UpdateContent();
+        }
+    }
+
+    private async Task HandleInput()
+    {
+        await UpdateContent();
+    }
+
+    private async Task UpdateContent()
+    {
+        if (_module != null)
+        {
+            var content = await _module.InvokeAsync<string>("getContent", _editorId);
+            _lastSetContent = content;
+            await ContentChanged.InvokeAsync(content);
+        }
+    }
+
+    public async Task Focus()
+    {
+        if (_module != null)
+        {
+            await _module.InvokeVoidAsync("focusEditor", _editorId);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module != null)
+        {
+            await _module.DisposeAsync();
+        }
+    }
+}

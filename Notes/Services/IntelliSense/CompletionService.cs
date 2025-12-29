@@ -7,9 +7,10 @@ namespace Notes.Services.IntelliSense;
 /// <summary>
 /// Service that provides completion data for Monaco editor
 /// </summary>
-public class CompletionService : ICompletionService
+public class CompletionService : ICompletionService, IDisposable
 {
     private readonly IModuleManager? _moduleManager;
+    private readonly RoslynCompletionService _roslynService;
     private CompletionData? _cachedData;
     private readonly List<ExtensionCompletion> _moduleExtensions = new();
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -21,6 +22,20 @@ public class CompletionService : ICompletionService
     public CompletionService(IModuleManager? moduleManager = null)
     {
         _moduleManager = moduleManager;
+        _roslynService = new RoslynCompletionService();
+    }
+
+    public async Task<List<CompletionItem>> GetRoslynCompletionsAsync(
+        string code,
+        int position,
+        CancellationToken cancellationToken = default)
+    {
+        return await _roslynService.GetCompletionsAsync(code, position, cancellationToken);
+    }
+
+    public void Dispose()
+    {
+        _roslynService?.Dispose();
     }
 
     public async Task<string> GetCompletionDataJsonAsync()

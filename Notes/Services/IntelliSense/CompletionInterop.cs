@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.JSInterop;
 
 namespace Notes.Services.IntelliSense;
@@ -10,6 +11,12 @@ public class CompletionInterop : IAsyncDisposable
     private readonly IJSRuntime _jsRuntime;
     private readonly ICompletionService _completionService;
     private DotNetObjectReference<CompletionInterop>? _dotNetRef;
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = false
+    };
 
     public CompletionInterop(IJSRuntime jsRuntime, ICompletionService completionService)
     {
@@ -44,6 +51,24 @@ public class CompletionInterop : IAsyncDisposable
     public async Task<string> GetCompletionDataAsync()
     {
         return await _completionService.GetCompletionDataJsonAsync();
+    }
+
+    /// <summary>
+    /// Get Roslyn-based completions at a specific position (called from JS)
+    /// </summary>
+    [JSInvokable]
+    public async Task<string> GetRoslynCompletionsAsync(string code, int position)
+    {
+        try
+        {
+            var completions = await _completionService.GetRoslynCompletionsAsync(code, position);
+            return JsonSerializer.Serialize(completions, JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Roslyn completions error: {ex.Message}");
+            return "[]";
+        }
     }
 
     public async ValueTask DisposeAsync()

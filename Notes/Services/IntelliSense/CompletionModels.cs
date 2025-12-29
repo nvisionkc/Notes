@@ -37,6 +37,7 @@ public class CompletionItem
     public string? Documentation { get; set; }
     public string? InsertText { get; set; }
     public bool IsSnippet { get; set; }
+    public bool IsFromRoslyn { get; set; }
 }
 
 /// <summary>

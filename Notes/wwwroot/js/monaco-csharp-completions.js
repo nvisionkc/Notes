@@ -1,5 +1,6 @@
 // Enhanced C# completions for the scripting environment
 // Loads completion data from .NET CompletionService via JSInterop
+// Uses Roslyn for real-time semantic completions
 
 (function () {
     'use strict';
@@ -7,6 +8,14 @@
     // Completion data loaded from .NET
     let completionData = null;
     let dotNetRef = null;
+
+    // Roslyn completion cache and debounce
+    let roslynCache = { code: '', position: -1, results: [] };
+    let roslynPending = null;
+    const ROSLYN_DEBOUNCE_MS = 150;
+
+    // Guard to prevent multiple provider registrations
+    let completionProviderRegistered = false;
 
     // Kind mapping from string to Monaco enum
     const kindMap = {
@@ -19,6 +28,13 @@
         'Constructor': 3,   // monaco.languages.CompletionItemKind.Constructor
         'Snippet': 14,      // monaco.languages.CompletionItemKind.Snippet
         'Module': 8,        // monaco.languages.CompletionItemKind.Module
+        'Keyword': 13,      // monaco.languages.CompletionItemKind.Keyword
+        'Variable': 5,      // monaco.languages.CompletionItemKind.Variable
+        'Enum': 12,         // monaco.languages.CompletionItemKind.Enum
+        'EnumMember': 19,   // monaco.languages.CompletionItemKind.EnumMember
+        'Event': 22,        // monaco.languages.CompletionItemKind.Event
+        'Function': 1,      // monaco.languages.CompletionItemKind.Function
+        'Text': 0,          // monaco.languages.CompletionItemKind.Text
     };
 
     // Build type index for fast lookup
@@ -77,9 +93,16 @@
             return;
         }
 
+        // Prevent duplicate registrations
+        if (completionProviderRegistered) {
+            console.log('Completion provider already registered, skipping');
+            return;
+        }
+        completionProviderRegistered = true;
+
         monaco.languages.registerCompletionItemProvider('csharp', {
             triggerCharacters: ['.', ' '],
-            provideCompletionItems: function (model, position) {
+            provideCompletionItems: async function (model, position, context, token) {
                 const word = model.getWordUntilPosition(position);
                 const range = {
                     startLineNumber: position.lineNumber,
@@ -87,6 +110,9 @@
                     startColumn: word.startColumn,
                     endColumn: word.endColumn
                 };
+
+                const code = model.getValue();
+                const offset = model.getOffsetAt(position);
 
                 const textUntilPosition = model.getValueInRange({
                     startLineNumber: 1,
@@ -100,23 +126,119 @@
 
                 const suggestions = [];
 
-                // Determine context
-                const context = analyzeContext(textUntilPosition, textBeforeCursor);
-
-                if (context.afterDot) {
-                    // Member access context
-                    addMemberCompletions(suggestions, context, range);
-                } else if (context.afterNew) {
-                    // Constructor context
-                    addConstructorCompletions(suggestions, range);
-                } else {
-                    // Top-level context
-                    addTopLevelCompletions(suggestions, range, context);
+                // Try Roslyn completions first (async)
+                const roslynSuggestions = await getRoslynCompletions(code, offset, range);
+                if (roslynSuggestions.length > 0) {
+                    suggestions.push(...roslynSuggestions);
                 }
 
-                return { suggestions };
+                // Determine context for fallback/supplemental completions
+                const analysisContext = analyzeContext(textUntilPosition, textBeforeCursor);
+
+                // If Roslyn returned results, we still add snippets and module extensions
+                // If Roslyn failed or returned nothing, use full manual completions
+                if (roslynSuggestions.length === 0) {
+                    // Full fallback to manual completions
+                    if (analysisContext.afterDot) {
+                        addMemberCompletions(suggestions, analysisContext, range);
+                    } else if (analysisContext.afterNew) {
+                        addConstructorCompletions(suggestions, range);
+                    } else {
+                        addTopLevelCompletions(suggestions, range, analysisContext);
+                    }
+                } else {
+                    // Roslyn worked - add supplemental items (snippets, extensions)
+                    if (!analysisContext.afterDot && !analysisContext.afterNew) {
+                        // Add snippets for top-level context
+                        addSnippetCompletions(suggestions, range);
+                        // Add extension access
+                        addExtensionCompletions(suggestions, range, analysisContext);
+                    }
+                }
+
+                // Deduplicate by label (Roslyn may return duplicates for overloads)
+                const seen = new Set();
+                const uniqueSuggestions = suggestions.filter(s => {
+                    if (seen.has(s.label)) return false;
+                    seen.add(s.label);
+                    return true;
+                });
+
+                return { suggestions: uniqueSuggestions };
             }
         });
+    }
+
+    // Get Roslyn completions via .NET interop
+    async function getRoslynCompletions(code, position, range) {
+        if (!dotNetRef) {
+            return [];
+        }
+
+        try {
+            // Check cache
+            if (roslynCache.code === code && roslynCache.position === position) {
+                return roslynCache.results.map(item => convertRoslynItem(item, range));
+            }
+
+            // Call .NET for Roslyn completions
+            const jsonResult = await dotNetRef.invokeMethodAsync('GetRoslynCompletionsAsync', code, position);
+            const items = JSON.parse(jsonResult);
+
+            // Update cache
+            roslynCache = { code, position, results: items };
+
+            return items.map(item => convertRoslynItem(item, range));
+        } catch (e) {
+            console.error('Roslyn completion error:', e);
+            return [];
+        }
+    }
+
+    // Convert Roslyn completion item to Monaco format
+    function convertRoslynItem(item, range) {
+        const kind = kindMap[item.kind] || kindMap['Text'];
+
+        return {
+            label: item.label,
+            kind: kind,
+            detail: item.detail,
+            documentation: item.documentation,
+            insertText: item.insertText || item.label,
+            insertTextRules: item.isSnippet ?
+                monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet : undefined,
+            range: range,
+            sortText: '0' + item.label // Prioritize Roslyn results
+        };
+    }
+
+    // Add snippet completions (for supplementing Roslyn)
+    function addSnippetCompletions(suggestions, range) {
+        if (!completionData?.snippets) return;
+
+        for (const snippet of completionData.snippets) {
+            suggestions.push({
+                label: snippet.label,
+                kind: kindMap['Snippet'],
+                detail: snippet.detail,
+                documentation: snippet.documentation,
+                insertText: snippet.insertText,
+                insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+                range: range,
+                sortText: '1' + snippet.label // After Roslyn results
+            });
+        }
+    }
+
+    // Add extension completions (for supplementing Roslyn)
+    function addExtensionCompletions(suggestions, range, context) {
+        if (context.isExtensions) {
+            if (context.extensionPrefix) {
+                addExtensionMethodCompletions(suggestions, context.extensionPrefix, range);
+            } else {
+                addExtensionPrefixCompletions(suggestions, range);
+            }
+        }
     }
 
     function analyzeContext(fullText, lineTextBeforeCursor) {

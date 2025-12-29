@@ -16,6 +16,11 @@ public interface ICompletionService
     Task<CompletionData> GetCompletionDataAsync();
 
     /// <summary>
+    /// Get Roslyn-based completions at a specific position
+    /// </summary>
+    Task<List<CompletionItem>> GetRoslynCompletionsAsync(string code, int position, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Register completions from a module extension
     /// </summary>
     void RegisterModuleCompletions(ExtensionCompletion extension);

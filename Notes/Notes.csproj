@@ -53,6 +53,9 @@
 
     <ItemGroup>
         <PackageReference Include="BlazorMonaco" Version="3.4.0" />
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Features" Version="4.14.0" />
+        <PackageReference Include="Microsoft.CodeAnalysis.Features" Version="4.14.0" />
+        <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.Common" Version="4.14.0" />
         <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
         <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" Version="$(MauiVersion)" />
         <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />

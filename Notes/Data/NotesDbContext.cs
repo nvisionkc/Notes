@@ -6,6 +6,7 @@ namespace Notes.Data;
 public class NotesDbContext : DbContext
 {
     public DbSet<Note> Notes => Set<Note>();
+    public DbSet<Script> Scripts => Set<Script>();
 
     public NotesDbContext(DbContextOptions<NotesDbContext> options)
         : base(options) { }
@@ -17,6 +18,16 @@ public class NotesDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Title).HasMaxLength(500);
             entity.Property(e => e.Preview).HasMaxLength(200);
+            entity.HasIndex(e => e.ModifiedAt);
+            entity.HasIndex(e => e.IsDeleted);
+            entity.HasQueryFilter(e => !e.IsDeleted);
+        });
+
+        modelBuilder.Entity<Script>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).HasMaxLength(200);
+            entity.Property(e => e.Description).HasMaxLength(500);
             entity.HasIndex(e => e.ModifiedAt);
             entity.HasIndex(e => e.IsDeleted);
             entity.HasQueryFilter(e => !e.IsDeleted);

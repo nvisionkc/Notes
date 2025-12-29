@@ -1,0 +1,579 @@
+@inject IScriptingService ScriptingService
+@inject IJSRuntime JSRuntime
+
+<div class="script-editor-page">
+    <div class="script-toolbar">
+        <input type="text"
+               class="script-name-input"
+               @bind="_currentScript.Name"
+               @bind:event="oninput"
+               placeholder="Script name..." />
+
+        <div class="toolbar-actions">
+            <button class="btn-help" @onclick="ToggleHelp" title="Script Help">
+                ?
+            </button>
+            <button class="btn-run @(_isRunning ? "running" : "")"
+                    @onclick="RunScript"
+                    disabled="@_isRunning"
+                    title="Run Script">
+                @if (_isRunning)
+                {
+                    <span>Running...</span>
+                }
+                else
+                {
+                    <span>Run</span>
+                }
+            </button>
+            <button class="btn-save" @onclick="SaveScript" title="Save Script">
+                Save
+            </button>
+        </div>
+    </div>
+
+    @if (_showHelp)
+    {
+        <div class="script-help-pane">
+            <div class="help-header">
+                <span>Script Reference</span>
+                <button class="help-close" @onclick="ToggleHelp">×</button>
+            </div>
+            <div class="help-content">
+                <section>
+                    <h3>Script Globals</h3>
+                    <table class="help-table">
+                        <thead><tr><th>Property</th><th>Type</th><th>Description</th></tr></thead>
+                        <tbody>
+                            <tr><td><code>NoteContent</code></td><td>string</td><td>Current note HTML content</td></tr>
+                            <tr><td><code>NotePlainText</code></td><td>string</td><td>Plain text version of current note</td></tr>
+                            <tr><td><code>NoteTitle</code></td><td>string</td><td>Current note title</td></tr>
+                            <tr><td><code>ClipboardText</code></td><td>string</td><td>Most recent clipboard text</td></tr>
+                            <tr><td><code>ClipboardHistory</code></td><td>List&lt;string&gt;</td><td>Recent clipboard history</td></tr>
+                            <tr><td><code>OutputContent</code></td><td>string?</td><td>Set this to update note content</td></tr>
+                        </tbody>
+                    </table>
+                </section>
+
+                <section>
+                    <h3>Helper Methods</h3>
+                    <table class="help-table">
+                        <thead><tr><th>Method</th><th>Returns</th><th>Description</th></tr></thead>
+                        <tbody>
+                            <tr><td><code>Print(value)</code></td><td>void</td><td>Print to script output panel</td></tr>
+                            <tr><td><code>StripHtml(html)</code></td><td>string</td><td>Remove HTML tags from content</td></tr>
+                            <tr><td><code>ToHtml(text)</code></td><td>string</td><td>Wrap plain text in HTML paragraphs</td></tr>
+                            <tr><td><code>TransformLines(text, func)</code></td><td>string</td><td>Transform each line with a function</td></tr>
+                        </tbody>
+                    </table>
+                </section>
+
+                <section>
+                    <h3>Examples</h3>
+                    <table class="help-table examples-table">
+                        <thead><tr><th>Task</th><th>Code</th></tr></thead>
+                        <tbody>
+                            <tr>
+                                <td>Make HTTP GET request</td>
+                                <td><pre>var http = new HttpClient();
+var response = await http.GetStringAsync("https://api.example.com/data");
+Print(response);</pre></td>
+                            </tr>
+                            <tr>
+                                <td>Parse JSON response</td>
+                                <td><pre>var http = new HttpClient();
+var json = await http.GetStringAsync("https://jsonplaceholder.typicode.com/todos/1");
+var data = System.Text.Json.JsonDocument.Parse(json);
+Print(data.RootElement.GetProperty("title").GetString());</pre></td>
+                            </tr>
+                            <tr>
+                                <td>Work with collections</td>
+                                <td><pre>var numbers = new[] {{ 1, 2, 3, 4, 5 }};
+var doubled = numbers.Select(n => n * 2).ToList();
+Print(string.Join(", ", doubled));</pre></td>
+                            </tr>
+                            <tr>
+                                <td>Filter and transform</td>
+                                <td><pre>var lines = NotePlainText.Split('\n');
+var nonEmpty = lines.Where(l => !string.IsNullOrWhiteSpace(l))
+                    .Select(l => l.Trim().ToUpper());
+Print(string.Join("\n", nonEmpty));</pre></td>
+                            </tr>
+                            <tr>
+                                <td>Update note content</td>
+                                <td><pre>var text = StripHtml(NoteContent);
+var result = text.ToUpper();
+OutputContent = ToHtml(result);</pre></td>
+                            </tr>
+                            <tr>
+                                <td>Number lines</td>
+                                <td><pre>var text = StripHtml(NoteContent);
+int i = 1;
+var numbered = TransformLines(text, line => $"{{i++}}. {{line}}");
+OutputContent = ToHtml(numbered);</pre></td>
+                            </tr>
+                            <tr>
+                                <td>Use clipboard history</td>
+                                <td><pre>Print($"Clipboard has {{ClipboardHistory.Count}} items:");
+foreach (var item in ClipboardHistory.Take(5))
+{{
+    Print($"- {{item.Substring(0, Math.Min(50, item.Length))}}...");
+}}</pre></td>
+                            </tr>
+                            <tr>
+                                <td>Regex replacement</td>
+                                <td><pre>var text = StripHtml(NoteContent);
+var result = Regex.Replace(text, @@"(\d+)", "[$1]");
+OutputContent = ToHtml(result);</pre></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </section>
+            </div>
+        </div>
+    }
+
+    <div class="script-editor-container">
+        <div class="code-editor-panel">
+            @if (!string.IsNullOrEmpty(_editorError))
+            {
+                <div class="editor-error" style="color: red; padding: 10px; background: #1e1e1e;">
+                    <p><strong>Monaco Error:</strong> @_editorError</p>
+                    <button @onclick="FallbackToTextarea">Use Simple Editor</button>
+                </div>
+            }
+            else if (_useMonaco)
+            {
+                <StandaloneCodeEditor @ref="_monacoEditor"
+                                      Id="script-editor"
+                                      ConstructionOptions="EditorConstructionOptions"
+                                      OnDidChangeModelContent="OnCodeChanged" />
+            }
+            else
+            {
+                <textarea class="code-editor"
+                          @bind="_currentScript.Code"
+                          @bind:event="oninput"
+                          spellcheck="false"
+                          placeholder="// Enter your C# script here..."></textarea>
+            }
+        </div>
+
+        <div class="output-splitter" @onmousedown="StartResize"></div>
+
+        <div class="output-panel" style="height: @(_outputHeight)px; flex: none;">
+            <div class="output-header">
+                <span>Output</span>
+                <div class="output-header-actions">
+                    @if (_lastResult?.ReturnValue != null)
+                    {
+                        <span class="result-type-badge">@_lastResult.ReturnValueType</span>
+                        <button class="btn-output-action" @onclick="CopyResult" title="Copy to clipboard">Copy</button>
+                        <button class="btn-output-action" @onclick="SaveResult" title="Save to file">Save</button>
+                    }
+                    @if (_lastResult != null)
+                    {
+                        <span class="execution-time">
+                            @_lastResult.ExecutionTime.TotalMilliseconds.ToString("F0")ms
+                        </span>
+                        <button class="btn-output-action btn-clear" @onclick="ClearResults" title="Clear results">Clear</button>
+                    }
+                </div>
+            </div>
+            <div class="output-content @(_lastResult?.Success == false ? "error" : "")">
+                @if (_lastResult != null)
+                {
+                    @if (!_lastResult.Success)
+                    {
+                        <div class="error-message">@_lastResult.ErrorMessage</div>
+                    }
+
+                    @* Console output with typed viewers *@
+                    @if (_lastResult.ConsoleOutput.Count > 0)
+                    {
+                        <div class="console-output">
+                            @foreach (var item in _lastResult.ConsoleOutput)
+                            {
+                                <div class="console-item">
+                                    @switch (item.Type)
+                                    {
+                                        case ResultType.Text:
+                                            <div class="output-line">@item.TextValue</div>
+                                            break;
+
+                                        case ResultType.Html:
+                                            <div class="console-html-viewer">
+                                                <iframe class="html-viewer-small" srcdoc="@item.TextValue"></iframe>
+                                            </div>
+                                            break;
+
+                                        case ResultType.Collection:
+                                            @if (item.TableValue != null && item.TableColumns != null && item.TableValue.Count > 0)
+                                            {
+                                                <div class="console-table-viewer">
+                                                    <table class="table-viewer">
+                                                        <thead>
+                                                            <tr>
+                                                                @foreach (var col in item.TableColumns)
+                                                                {
+                                                                    <th>@col</th>
+                                                                }
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            @foreach (var row in item.TableValue)
+                                                            {
+                                                                <tr>
+                                                                    @foreach (var col in item.TableColumns)
+                                                                    {
+                                                                        <td>@(row.TryGetValue(col, out var val) ? val?.ToString() ?? "<null>" : "")</td>
+                                                                    }
+                                                                </tr>
+                                                            }
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <pre class="json-viewer-small">@item.JsonValue</pre>
+                                            }
+                                            break;
+
+                                        case ResultType.Object:
+                                            <pre class="json-viewer-small">@item.JsonValue</pre>
+                                            break;
+
+                                        default:
+                                            <div class="output-line">@item.Value</div>
+                                            break;
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    @* Return value viewer based on type *@
+                    @if (_lastResult.ReturnValue != null)
+                    {
+                        <div class="return-value-viewer">
+                            <div class="viewer-label">Return Value:</div>
+                            @switch (_lastResult.ReturnValueType)
+                            {
+                                case ResultType.Text:
+                                    <textarea class="text-viewer" readonly>@_lastResult.ReturnValueAsText</textarea>
+                                    break;
+
+                                case ResultType.Html:
+                                    <div class="html-viewer-container">
+                                        <iframe class="html-viewer" srcdoc="@_lastResult.ReturnValueAsText"></iframe>
+                                    </div>
+                                    break;
+
+                                case ResultType.Collection:
+                                    <div class="table-viewer-container">
+                                        <table class="table-viewer">
+                                            <thead>
+                                                <tr>
+                                                    @foreach (var col in _lastResult.TableColumns)
+                                                    {
+                                                        <th>@col</th>
+                                                    }
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @if (_lastResult.ReturnValueAsTable != null)
+                                                {
+                                                    @foreach (var row in _lastResult.ReturnValueAsTable)
+                                                    {
+                                                        <tr>
+                                                            @foreach (var col in _lastResult.TableColumns)
+                                                            {
+                                                                <td>@(row.TryGetValue(col, out var val) ? val?.ToString() ?? "<null>" : "")</td>
+                                                            }
+                                                        </tr>
+                                                    }
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    break;
+
+                                case ResultType.Object:
+                                    <pre class="json-viewer">@_lastResult.ReturnValueAsJson</pre>
+                                    break;
+
+                                default:
+                                    <div class="simple-value">@_lastResult.ReturnValue</div>
+                                    break;
+                            }
+                        </div>
+                    }
+
+                    @if (_lastResult.Success && _lastResult.OutputContent != null)
+                    {
+                        <div class="output-applied">
+                            Note content updated
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="output-placeholder">
+                        Run the script to see output...
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public int? ScriptId { get; set; }
+    [Parameter] public EventCallback<int> OnScriptSaved { get; set; }
+    [Parameter] public Func<(string Content, string PlainText, string Title)>? GetCurrentNote { get; set; }
+    [Parameter] public Func<(string Text, List<string> History)>? GetClipboardData { get; set; }
+    [Parameter] public EventCallback<string> OnNoteContentUpdate { get; set; }
+
+    private Script _currentScript = new();
+    private ScriptResult? _lastResult;
+    private bool _isRunning;
+    private StandaloneCodeEditor? _monacoEditor;
+    private bool _useMonaco = true;
+    private string? _editorError;
+    private bool _showHelp;
+    private int _outputHeight = 200;
+    private bool _isResizing;
+    private DotNetObjectReference<ScriptEditor>? _dotNetRef;
+
+    // Cache results per script ID
+    private static readonly Dictionary<int, ScriptResult> _resultCache = new();
+
+    private void ToggleHelp() => _showHelp = !_showHelp;
+
+    private async Task StartResize(MouseEventArgs e)
+    {
+        _isResizing = true;
+        _dotNetRef?.Dispose();
+        _dotNetRef = DotNetObjectReference.Create(this);
+        await JSRuntime.InvokeVoidAsync("startOutputResize", _dotNetRef, e.ClientY, _outputHeight);
+    }
+
+    [JSInvokable]
+    public void UpdateOutputHeight(int newHeight)
+    {
+        // Allow resizing between 80px and 80% of viewport (approx)
+        _outputHeight = Math.Max(80, newHeight);
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void StopResize()
+    {
+        _isResizing = false;
+    }
+
+    private void ClearResults()
+    {
+        _lastResult = null;
+        if (_currentScript.Id > 0)
+        {
+            _resultCache.Remove(_currentScript.Id);
+        }
+        StateHasChanged();
+    }
+
+    private void FallbackToTextarea()
+    {
+        _useMonaco = false;
+        _editorError = null;
+        StateHasChanged();
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender && _useMonaco)
+        {
+            // Give Monaco a moment, then check if it initialized
+            _ = CheckMonacoInitialized();
+        }
+    }
+
+    private async Task CheckMonacoInitialized()
+    {
+        await Task.Delay(2000); // Wait 2 seconds for Monaco to initialize
+        if (_monacoEditor == null && _useMonaco && string.IsNullOrEmpty(_editorError))
+        {
+            _editorError = "Monaco editor failed to initialize. Check browser console for details.";
+            StateHasChanged();
+        }
+    }
+
+    private StandaloneEditorConstructionOptions EditorConstructionOptions(StandaloneCodeEditor editor)
+    {
+        return new StandaloneEditorConstructionOptions
+        {
+            AutomaticLayout = true,
+            Language = "csharp",
+            Theme = "vs-dark",
+            Value = _currentScript.Code,
+            FontSize = 14,
+            Minimap = new EditorMinimapOptions { Enabled = false },
+            ScrollBeyondLastLine = false,
+            RenderLineHighlight = "all",
+            TabSize = 4
+        };
+    }
+
+    private async Task OnCodeChanged(ModelContentChangedEvent e)
+    {
+        if (_monacoEditor != null)
+        {
+            _currentScript.Code = await _monacoEditor.GetValue();
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ScriptId.HasValue && ScriptId.Value != _currentScript.Id)
+        {
+            await LoadScript(ScriptId.Value);
+        }
+    }
+
+    public async Task LoadScript(int id)
+    {
+        var script = await ScriptingService.GetScriptAsync(id);
+        if (script != null)
+        {
+            _currentScript = script;
+            // Load cached result if available
+            _lastResult = _resultCache.TryGetValue(id, out var cached) ? cached : null;
+            if (_monacoEditor != null)
+            {
+                await _monacoEditor.SetValue(script.Code);
+            }
+            StateHasChanged();
+        }
+    }
+
+    public async Task CreateNewScript()
+    {
+        _currentScript = await ScriptingService.CreateScriptAsync();
+        // Load cached result for new script if it was saved and reloaded
+        _lastResult = _currentScript.Id > 0 && _resultCache.TryGetValue(_currentScript.Id, out var cached) ? cached : null;
+        if (_monacoEditor != null)
+        {
+            await _monacoEditor.SetValue(_currentScript.Code);
+        }
+        StateHasChanged();
+    }
+
+    private async Task RunScript()
+    {
+        if (_isRunning) return;
+        _isRunning = true;
+        StateHasChanged();
+
+        try
+        {
+            // Build globals from current context
+            var globals = new ScriptGlobals();
+
+            if (GetCurrentNote != null)
+            {
+                var (content, plainText, title) = GetCurrentNote.Invoke();
+                globals.NoteContent = content;
+                globals.NotePlainText = plainText;
+                globals.NoteTitle = title;
+            }
+
+            if (GetClipboardData != null)
+            {
+                var (text, history) = GetClipboardData.Invoke();
+                globals.ClipboardText = text;
+                globals.ClipboardHistory = history;
+            }
+
+            // Execute
+            _lastResult = await ScriptingService.ExecuteAsync(
+                _currentScript.Code,
+                globals);
+
+            // Update note content if script produced output
+            if (_lastResult.Success && !string.IsNullOrEmpty(_lastResult.OutputContent))
+            {
+                await OnNoteContentUpdate.InvokeAsync(_lastResult.OutputContent);
+            }
+
+            // Cache the result for this script
+            if (_currentScript.Id > 0 && _lastResult != null)
+            {
+                _resultCache[_currentScript.Id] = _lastResult;
+            }
+
+            // Update run stats
+            if (_currentScript.Id > 0)
+            {
+                _currentScript.LastRunAt = DateTime.UtcNow;
+                _currentScript.RunCount++;
+                await ScriptingService.SaveScriptAsync(_currentScript);
+            }
+        }
+        finally
+        {
+            _isRunning = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SaveScript()
+    {
+        await ScriptingService.SaveScriptAsync(_currentScript);
+        await OnScriptSaved.InvokeAsync(_currentScript.Id);
+    }
+
+    private async Task CopyResult()
+    {
+        if (_lastResult?.ReturnValue == null) return;
+
+        string textToCopy = _lastResult.ReturnValueType switch
+        {
+            ResultType.Collection or ResultType.Object => _lastResult.ReturnValueAsJson ?? "",
+            _ => _lastResult.ReturnValueAsText ?? ""
+        };
+
+        await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", textToCopy);
+    }
+
+    private async Task SaveResult()
+    {
+        if (_lastResult?.ReturnValue == null) return;
+
+        string content = _lastResult.ReturnValueType switch
+        {
+            ResultType.Collection or ResultType.Object => _lastResult.ReturnValueAsJson ?? "",
+            _ => _lastResult.ReturnValueAsText ?? ""
+        };
+
+        string extension = _lastResult.ReturnValueType switch
+        {
+            ResultType.Html => "html",
+            ResultType.Collection or ResultType.Object => "json",
+            _ => "txt"
+        };
+
+        string mimeType = _lastResult.ReturnValueType switch
+        {
+            ResultType.Html => "text/html",
+            ResultType.Collection or ResultType.Object => "application/json",
+            _ => "text/plain"
+        };
+
+        // Use JS to trigger a download
+        await JSRuntime.InvokeVoidAsync("downloadFile",
+            $"script-output.{extension}",
+            content,
+            mimeType);
+    }
+}

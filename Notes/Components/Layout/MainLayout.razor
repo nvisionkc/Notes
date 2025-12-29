@@ -13,6 +13,15 @@
                     @onclick="@(() => SetActiveTab("clipboard"))">
                 Clipboard
             </button>
+            <button class="tab @(ActiveTab == "scripts" ? "active" : "")"
+                    @onclick="@(() => SetActiveTab("scripts"))">
+                Scripts
+            </button>
+            <button class="pin-button @(_isPinned ? "pinned" : "")"
+                    @onclick="TogglePin"
+                    title="@(_isPinned ? "Unpin window (make draggable)" : "Pin to bottom-right")">
+                <span class="pin-icon">@(_isPinned ? "📌" : "📍")</span>
+            </button>
         </div>
 
         @if (ActiveTab == "notes")
@@ -23,10 +32,18 @@
                      OnNewNote="OnNewNote"
                      OnNoteDeleted="OnNoteDeleted" />
         }
-        else
+        else if (ActiveTab == "clipboard")
         {
             <ClipboardHistory OnConvertToNote="ConvertClipboardToNote"
                               OnItemSelected="OnClipboardItemSelected" />
+        }
+        else if (ActiveTab == "scripts")
+        {
+            <ScriptsPanel @ref="_scriptsPanel"
+                          SelectedScriptId="@SelectedScriptId"
+                          SelectedScriptIdChanged="OnScriptSelected"
+                          OnNewScript="OnNewScript"
+                          OnScriptDeleted="OnScriptDeleted" />
         }
 
     </div>
@@ -40,16 +57,24 @@
 
 @code {
     private Sidebar? _sidebar;
+    private ScriptsPanel? _scriptsPanel;
+    private bool _isPinned = true;
     public int? SelectedNoteId { get; private set; }
+    public int? SelectedScriptId { get; private set; }
     public string ActiveTab { get; private set; } = "notes";
     public event Func<int?, Task>? NoteSelectionChanged;
     public event Func<Task>? NewNoteRequested;
     public event Func<int, Task>? NoteDeleteRequested;
     public event Func<string, bool, Task>? ClipboardConvertRequested;
     public event Func<string, bool, Task>? ClipboardItemSelected;
+    public event Func<int?, Task>? ScriptSelectionChanged;
+    public event Func<Task>? NewScriptRequested;
+    public event Func<int, Task>? ScriptDeleteRequested;
+    public event Func<int, Task>? ScriptSaved;
 
 #if WINDOWS
     [Inject] private Notes.Services.ClipboardService? ClipboardService { get; set; }
+    [Inject] private Notes.Services.TrayService? TrayService { get; set; }
 #endif
 
     private string ThemeClass => ThemeService.IsDarkMode ? "dark-theme" : "light-theme";
@@ -64,7 +89,25 @@
         {
             ClipboardService.NotificationClicked += OnNotificationClicked;
         }
+        if (TrayService != null)
+        {
+            _isPinned = TrayService.IsPinned;
+            TrayService.PinStateChanged += OnPinStateChanged;
+        }
 #endif
+    }
+
+    private void TogglePin()
+    {
+#if WINDOWS
+        TrayService?.TogglePin();
+#endif
+    }
+
+    private void OnPinStateChanged(bool isPinned)
+    {
+        _isPinned = isPinned;
+        InvokeAsync(StateHasChanged);
     }
 
     private void OnNotificationClicked(int clipboardId)
@@ -130,6 +173,50 @@
         }
     }
 
+    private async Task OnScriptSelected(int? scriptId)
+    {
+        SelectedScriptId = scriptId;
+        if (ScriptSelectionChanged != null)
+        {
+            await ScriptSelectionChanged.Invoke(scriptId);
+        }
+    }
+
+    private async Task OnNewScript()
+    {
+        SelectedScriptId = null;
+        if (NewScriptRequested != null)
+        {
+            await NewScriptRequested.Invoke();
+        }
+    }
+
+    private async Task OnScriptDeleted(int scriptId)
+    {
+        if (SelectedScriptId == scriptId)
+        {
+            SelectedScriptId = null;
+        }
+        if (ScriptDeleteRequested != null)
+        {
+            await ScriptDeleteRequested.Invoke(scriptId);
+        }
+    }
+
+    public async Task OnScriptSaved(int scriptId)
+    {
+        SelectedScriptId = scriptId;
+        if (_scriptsPanel != null)
+        {
+            await _scriptsPanel.RefreshScriptsAsync();
+        }
+        if (ScriptSaved != null)
+        {
+            await ScriptSaved.Invoke(scriptId);
+        }
+        StateHasChanged();
+    }
+
     private async Task ConvertClipboardToNote((string Content, bool IsImage) data)
     {
         ActiveTab = "notes";
@@ -170,6 +257,10 @@
         if (ClipboardService != null)
         {
             ClipboardService.NotificationClicked -= OnNotificationClicked;
+        }
+        if (TrayService != null)
+        {
+            TrayService.PinStateChanged -= OnPinStateChanged;
         }
 #endif
     }

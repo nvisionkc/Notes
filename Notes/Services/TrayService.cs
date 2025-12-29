@@ -1,6 +1,7 @@
 #if WINDOWS
 using System.Runtime.InteropServices;
 using Microsoft.UI.Windowing;
+using Windows.Graphics;
 using WinUIWindow = Microsoft.UI.Xaml.Window;
 
 namespace Notes.Services;
@@ -12,6 +13,7 @@ public class TrayService : IDisposable
     private const int WM_LBUTTONDBLCLK = 0x0203;
     private const int WM_RBUTTONUP = 0x0205;
     private const int WM_HOTKEY = 0x0312;
+    private const int WM_EXITSIZEMOVE = 0x0232;
 
     // Hotkey modifiers
     private const int MOD_SHIFT = 0x0004;
@@ -34,6 +36,10 @@ public class TrayService : IDisposable
     private const int ID_SHOW = 1;
     private const int ID_EXIT = 2;
 
+    // Default window dimensions
+    private const int DEFAULT_WIDTH = 400;
+    private const int DEFAULT_HEIGHT = 600;
+
     private WinUIWindow? _window;
     private AppWindow? _appWindow;
     private IntPtr _hWnd;
@@ -42,20 +48,27 @@ public class TrayService : IDisposable
     private bool _iconAdded;
     private NativeWindowProc? _wndProcDelegate;
     private IntPtr _oldWndProc;
+    private WindowSettingsService? _windowSettings;
 
     public event Action? ShowWindowRequested;
     public event Action? ExitRequested;
+    public event Action<bool>? PinStateChanged;
 
     public bool IsExiting { get; private set; }
+    public bool IsPinned => _windowSettings?.IsPinned ?? true;
 
-    public void Initialize(WinUIWindow window)
+    public void Initialize(WinUIWindow window, WindowSettingsService? windowSettings = null)
     {
         _window = window;
+        _windowSettings = windowSettings ?? new WindowSettingsService();
         _hWnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
 
         // Get AppWindow for minimize/hide functionality
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(_hWnd);
         _appWindow = AppWindow.GetFromWindowId(windowId);
+
+        // Set initial window position based on pin state
+        ApplyWindowPosition();
 
         // Intercept close to minimize to tray
         _appWindow.Closing += (s, e) =>
@@ -128,6 +141,12 @@ public class TrayService : IDisposable
             return IntPtr.Zero;
         }
 
+        // Save position when window is moved/resized (only when unpinned)
+        if (msg == WM_EXITSIZEMOVE && !IsPinned && _appWindow != null)
+        {
+            SaveCurrentPosition();
+        }
+
         return CallWindowProc(_oldWndProc, hWnd, msg, wParam, lParam);
     }
 
@@ -171,6 +190,105 @@ public class TrayService : IDisposable
     public void HideWindow()
     {
         _appWindow?.Hide();
+    }
+
+    public void TogglePin()
+    {
+        if (_windowSettings == null) return;
+
+        if (IsPinned)
+        {
+            // Unpinning - save current pinned position info isn't needed
+            // Just change state and restore last unpinned position
+            _windowSettings.IsPinned = false;
+        }
+        else
+        {
+            // Pinning - save current unpinned position first
+            SaveCurrentPosition();
+            _windowSettings.IsPinned = true;
+        }
+
+        ApplyWindowPosition();
+        PinStateChanged?.Invoke(IsPinned);
+    }
+
+    public void SetPinned(bool pinned)
+    {
+        if (_windowSettings == null || IsPinned == pinned) return;
+
+        if (!pinned)
+        {
+            // Unpinning
+            _windowSettings.IsPinned = false;
+        }
+        else
+        {
+            // Pinning - save current position first
+            SaveCurrentPosition();
+            _windowSettings.IsPinned = true;
+        }
+
+        ApplyWindowPosition();
+        PinStateChanged?.Invoke(IsPinned);
+    }
+
+    private void ApplyWindowPosition()
+    {
+        if (_appWindow == null) return;
+
+        // Get current window size
+        var currentSize = _appWindow.Size;
+        int width = currentSize.Width > 0 ? currentSize.Width : DEFAULT_WIDTH;
+        int height = currentSize.Height > 0 ? currentSize.Height : DEFAULT_HEIGHT;
+
+        if (IsPinned)
+        {
+            // Position at bottom-right of primary display, keeping current size
+            var displayArea = DisplayArea.Primary;
+            var workArea = displayArea.WorkArea;
+
+            int x = workArea.X + workArea.Width - width;
+            int y = workArea.Y + workArea.Height - height;
+
+            _appWindow.Move(new PointInt32(x, y));
+        }
+        else
+        {
+            // Restore last unpinned position or use center
+            var (savedX, savedY, savedWidth, savedHeight) = _windowSettings?.GetUnpinnedPosition()
+                ?? (null, null, null, null);
+
+            if (savedX.HasValue && savedY.HasValue)
+            {
+                _appWindow.Move(new PointInt32(savedX.Value, savedY.Value));
+                // Only resize if we have saved dimensions
+                if (savedWidth.HasValue && savedHeight.HasValue)
+                {
+                    _appWindow.Resize(new SizeInt32(savedWidth.Value, savedHeight.Value));
+                }
+            }
+            else
+            {
+                // Center on screen with current size
+                var displayArea = DisplayArea.Primary;
+                var workArea = displayArea.WorkArea;
+
+                int x = workArea.X + (workArea.Width - width) / 2;
+                int y = workArea.Y + (workArea.Height - height) / 2;
+
+                _appWindow.Move(new PointInt32(x, y));
+            }
+        }
+    }
+
+    private void SaveCurrentPosition()
+    {
+        if (_appWindow == null || _windowSettings == null) return;
+
+        var pos = _appWindow.Position;
+        var size = _appWindow.Size;
+        _windowSettings.SaveUnpinnedPosition(pos.X, pos.Y, size.Width, size.Height);
     }
 
     public void Dispose()

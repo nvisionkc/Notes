@@ -1,0 +1,108 @@
+@inject IScriptingService ScriptingService
+
+<div class="scripts-panel">
+    <div class="scripts-header">
+        <h2>Scripts</h2>
+        <button class="btn-new" @onclick="CreateNewScript" title="New Script">
+            <span class="icon">+</span>
+        </button>
+    </div>
+
+    <div class="scripts-list">
+        @foreach (var script in _scripts)
+        {
+            <div class="script-item @(script.Id == SelectedScriptId ? "selected" : "")"
+                 @onclick="() => SelectScript(script.Id)">
+                <div class="script-content">
+                    <div class="script-name">@script.Name</div>
+                    <div class="script-meta">
+                        @if (script.LastRunAt.HasValue)
+                        {
+                            <span>Last run: @FormatTime(script.LastRunAt.Value)</span>
+                        }
+                        else
+                        {
+                            <span>Never run</span>
+                        }
+                    </div>
+                </div>
+                <button class="btn-delete"
+                        @onclick="() => DeleteScript(script.Id)"
+                        @onclick:stopPropagation="true"
+                        title="Delete script">
+                    <span class="icon">x</span>
+                </button>
+            </div>
+        }
+
+        @if (_error != null)
+        {
+            <div class="error-state" style="color: red; padding: 10px;">
+                <p>Error: @_error</p>
+            </div>
+        }
+        else if (!_scripts.Any())
+        {
+            <div class="empty-state">
+                <p>No scripts yet.</p>
+                <p>Click + to create one.</p>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public int? SelectedScriptId { get; set; }
+    [Parameter] public EventCallback<int?> SelectedScriptIdChanged { get; set; }
+    [Parameter] public EventCallback OnNewScript { get; set; }
+    [Parameter] public EventCallback<int> OnScriptDeleted { get; set; }
+
+    private List<Script> _scripts = new();
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshScriptsAsync();
+    }
+
+    public async Task RefreshScriptsAsync()
+    {
+        try
+        {
+            _scripts = await ScriptingService.GetAllScriptsAsync();
+            _error = null;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _scripts = new();
+        }
+        StateHasChanged();
+    }
+
+    private async Task SelectScript(int id)
+    {
+        await SelectedScriptIdChanged.InvokeAsync(id);
+    }
+
+    private async Task CreateNewScript()
+    {
+        await OnNewScript.InvokeAsync();
+    }
+
+    private async Task DeleteScript(int id)
+    {
+        await ScriptingService.DeleteScriptAsync(id);
+        await OnScriptDeleted.InvokeAsync(id);
+        await RefreshScriptsAsync();
+    }
+
+    private string FormatTime(DateTime time)
+    {
+        var diff = DateTime.UtcNow - time;
+        if (diff.TotalMinutes < 1) return "Just now";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        return time.ToLocalTime().ToString("MMM d");
+    }
+}

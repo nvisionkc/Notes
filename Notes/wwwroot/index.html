@@ -23,6 +23,76 @@
         <span class="dismiss">🗙</span>
     </div>
 
+    <!-- Monaco Editor -->
+    <script>
+        window.onerror = function(msg, url, line, col, error) {
+            console.error('Global error:', msg, url, line, col, error);
+            return false;
+        };
+
+        // Download file helper for script output
+        window.downloadFile = function(filename, content, mimeType) {
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        };
+
+        // Output panel resize helper
+        window.startOutputResize = function(dotNetRef, startY, startHeight) {
+            const onMouseMove = (e) => {
+                const delta = startY - e.clientY;
+                const newHeight = startHeight + delta;
+                dotNetRef.invokeMethodAsync('UpdateOutputHeight', newHeight);
+            };
+
+            const onMouseUp = () => {
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                dotNetRef.invokeMethodAsync('StopResize');
+            };
+
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+            document.body.style.cursor = 'row-resize';
+            document.body.style.userSelect = 'none';
+        };
+    </script>
+    <script src="_content/BlazorMonaco/lib/monaco-editor/min/vs/loader.js" onerror="console.error('Failed to load loader.js')"></script>
+    <!-- Custom C# completions - must load before Monaco initializes -->
+    <script src="js/monaco-csharp-completions.js"></script>
+    <script>
+        if (typeof require !== 'undefined') {
+            require.config({ paths: { vs: '_content/BlazorMonaco/lib/monaco-editor/min/vs' } });
+            console.log('Monaco require.config set successfully');
+
+            // Pre-load Monaco editor before Blazor starts
+            require(['vs/editor/editor.main'], function() {
+                console.log('Monaco editor.main loaded successfully');
+                window.monacoReady = true;
+
+                // Register custom C# completions for scripting
+                if (typeof window.registerScriptCompletions === 'function') {
+                    window.registerScriptCompletions();
+                } else {
+                    console.warn('registerScriptCompletions not found');
+                }
+            }, function(err) {
+                console.error('Failed to load Monaco editor.main:', err);
+            });
+        } else {
+            console.error('require is not defined - Monaco loader failed');
+        }
+    </script>
+    <script src="_content/BlazorMonaco/jsInterop.js" onerror="console.error('Failed to load jsInterop.js')"></script>
+
     <script src="_framework/blazor.webview.js" autostart="false"></script>
 
 </body>

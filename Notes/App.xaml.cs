@@ -56,10 +56,11 @@ public partial class App : Application
         {
             _trayService = Handler?.MauiContext?.Services.GetService<TrayService>();
             var saveService = Handler?.MauiContext?.Services.GetService<SaveOnCloseService>();
+            var windowSettings = Handler?.MauiContext?.Services.GetService<WindowSettingsService>();
 
             if (_trayService != null && _mainWindow.Handler?.PlatformView is Microsoft.UI.Xaml.Window nativeWindow)
             {
-                _trayService.Initialize(nativeWindow);
+                _trayService.Initialize(nativeWindow, windowSettings);
 
                 // Initialize clipboard monitoring
                 _clipboardService = Handler?.MauiContext?.Services.GetService<ClipboardService>();

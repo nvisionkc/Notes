@@ -4,25 +4,38 @@
 @inject SaveOnCloseService SaveOnCloseService
 @implements IDisposable
 
-<div class="note-editor-page" tabindex="0">
-    <RichTextEditor @ref="_editor"
-                    Content="@_currentNote.Content"
-                    ContentChanged="OnContentChanged" />
+@if (Layout?.ActiveTab == "scripts")
+{
+    <ScriptEditor @ref="_scriptEditor"
+                  ScriptId="@Layout?.SelectedScriptId"
+                  OnScriptSaved="OnScriptSaved"
+                  GetCurrentNote="GetCurrentNoteData"
+                  GetClipboardData="GetClipboardData"
+                  OnNoteContentUpdate="OnNoteContentUpdate" />
+}
+else
+{
+    <div class="note-editor-page" tabindex="0">
+        <RichTextEditor @ref="_editor"
+                        Content="@_currentNote.Content"
+                        ContentChanged="OnContentChanged" />
 
-    @if (_isSaving)
-    {
-        <div class="save-indicator">Saving...</div>
-    }
-    else if (_lastSaved.HasValue)
-    {
-        <div class="save-indicator saved">
-            Saved @_lastSaved.Value.ToLocalTime().ToString("h:mm tt")
-        </div>
-    }
-</div>
+        @if (_isSaving)
+        {
+            <div class="save-indicator">Saving...</div>
+        }
+        else if (_lastSaved.HasValue)
+        {
+            <div class="save-indicator saved">
+                Saved @_lastSaved.Value.ToLocalTime().ToString("h:mm tt")
+            </div>
+        }
+    </div>
+}
 
 @code {
     private RichTextEditor? _editor;
+    private ScriptEditor? _scriptEditor;
     private Note _currentNote = new();
     private string _originalContent = string.Empty;
     private bool _isSaving;
@@ -32,6 +45,10 @@
     private bool _isViewingClipboard;
 
     [CascadingParameter] public MainLayout? Layout { get; set; }
+
+#if WINDOWS
+    [Inject] private Notes.Services.ClipboardService? ClipboardService { get; set; }
+#endif
 
     protected override async Task OnInitializedAsync()
     {
@@ -47,6 +64,9 @@
             Layout.NoteDeleteRequested += OnNoteDeleted;
             Layout.ClipboardConvertRequested += OnClipboardConvert;
             Layout.ClipboardItemSelected += OnClipboardItemSelected;
+            Layout.ScriptSelectionChanged += OnScriptSelected;
+            Layout.NewScriptRequested += OnNewScriptRequested;
+            Layout.ScriptDeleteRequested += OnScriptDeleted;
         }
 
         // Setup auto-save timer (every 30 seconds)
@@ -242,6 +262,68 @@
         return _currentNote.Content != _originalContent;
     }
 
+    // Script-related methods
+    private async Task OnScriptSelected(int? scriptId)
+    {
+        if (scriptId.HasValue && _scriptEditor != null)
+        {
+            await _scriptEditor.LoadScript(scriptId.Value);
+        }
+    }
+
+    private async Task OnNewScriptRequested()
+    {
+        if (_scriptEditor != null)
+        {
+            await _scriptEditor.CreateNewScript();
+        }
+    }
+
+    private Task OnScriptDeleted(int scriptId)
+    {
+        // Script was deleted, nothing to do here since ScriptsPanel handles state
+        return Task.CompletedTask;
+    }
+
+    private async Task OnScriptSaved(int scriptId)
+    {
+        if (Layout != null)
+        {
+            await Layout.OnScriptSaved(scriptId);
+        }
+    }
+
+    private (string Content, string PlainText, string Title) GetCurrentNoteData()
+    {
+        var plainText = System.Text.RegularExpressions.Regex.Replace(
+            _currentNote.Content ?? string.Empty, "<[^>]+>", "");
+        var title = _currentNote.Title ?? "Untitled";
+        return (_currentNote.Content ?? string.Empty, plainText, title);
+    }
+
+    private (string Text, List<string> History) GetClipboardData()
+    {
+#if WINDOWS
+        if (ClipboardService != null)
+        {
+            var history = ClipboardService.History
+                .Where(h => !h.IsImage)
+                .Select(h => h.Content)
+                .ToList();
+            var current = history.FirstOrDefault() ?? string.Empty;
+            return (current, history);
+        }
+#endif
+        return (string.Empty, new List<string>());
+    }
+
+    private async Task OnNoteContentUpdate(string newContent)
+    {
+        _currentNote.Content = newContent;
+        _originalContent = string.Empty; // Mark as dirty
+        await InvokeAsync(StateHasChanged);
+    }
+
     public void Dispose()
     {
         _autoSaveTimer?.Stop();
@@ -256,6 +338,9 @@
             Layout.NoteDeleteRequested -= OnNoteDeleted;
             Layout.ClipboardConvertRequested -= OnClipboardConvert;
             Layout.ClipboardItemSelected -= OnClipboardItemSelected;
+            Layout.ScriptSelectionChanged -= OnScriptSelected;
+            Layout.NewScriptRequested -= OnNewScriptRequested;
+            Layout.ScriptDeleteRequested -= OnScriptDeleted;
         }
     }
 }

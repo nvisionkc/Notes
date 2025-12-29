@@ -11,6 +11,13 @@
     --border-color: #e0e0e0;
     --accent-color: #0078d4;
     --shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+
+    /* Icon Rail Variables */
+    --rail-width-collapsed: 48px;
+    --rail-width-expanded: 200px;
+    --rail-transition: 0.2s ease;
+    --rail-icon-size: 20px;
+    --rail-item-height: 44px;
 }
 
 .dark-theme {
@@ -123,6 +130,159 @@ html, body {
 
 .pin-button.pinned .pin-icon {
     transform: rotate(45deg);
+}
+
+/* ============================================
+   Icon Rail Navigation (VS Code style)
+   ============================================ */
+
+.icon-rail {
+    display: flex;
+    flex-direction: column;
+    width: var(--rail-width-collapsed);
+    min-width: var(--rail-width-collapsed);
+    height: 100%;
+    background-color: var(--bg-sidebar);
+    border-right: 1px solid var(--border-color);
+    transition: width var(--rail-transition), min-width var(--rail-transition);
+    overflow: hidden;
+    z-index: 100;
+}
+
+.icon-rail.expanded {
+    width: var(--rail-width-expanded);
+    min-width: var(--rail-width-expanded);
+}
+
+/* Rail Items Container */
+.rail-items {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 8px 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* Individual Rail Item */
+.rail-item {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: var(--rail-item-height);
+    padding: 0 14px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    position: relative;
+    transition: background-color 0.15s, color 0.15s;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.rail-item:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.rail-item.active {
+    color: var(--accent-color);
+    background-color: var(--bg-selected);
+}
+
+/* Active Indicator (VS Code style left border) */
+.rail-item.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 24px;
+    background-color: var(--accent-color);
+    border-radius: 0 2px 2px 0;
+}
+
+/* Icon Styling */
+.rail-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    min-width: 20px;
+    height: 20px;
+    font-size: var(--rail-icon-size);
+}
+
+.rail-icon svg {
+    width: var(--rail-icon-size);
+    height: var(--rail-icon-size);
+}
+
+/* Label Styling */
+.rail-label {
+    margin-left: 12px;
+    font-size: 13px;
+    font-weight: 500;
+    opacity: 0;
+    transform: translateX(-10px);
+    transition: opacity var(--rail-transition), transform var(--rail-transition);
+    pointer-events: none;
+}
+
+.icon-rail.expanded .rail-label {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+/* Rail Footer */
+.rail-footer {
+    display: flex;
+    flex-direction: column;
+    padding: 8px 0;
+    border-top: 1px solid var(--border-color);
+}
+
+/* Pin Button in Rail */
+.rail-item.pin-item.pinned {
+    color: var(--accent-color);
+}
+
+.rail-item.pin-item .pin-icon {
+    transition: transform 0.2s;
+}
+
+.rail-item.pin-item.pinned .pin-icon {
+    transform: rotate(45deg);
+}
+
+/* Expand Toggle Button */
+.rail-item.expand-toggle {
+    margin-top: auto;
+}
+
+.chevron-icon {
+    transition: transform 0.2s ease;
+}
+
+/* Tooltip for collapsed state */
+.icon-rail:not(.expanded) .rail-item[title]:not([title=""]):hover::after {
+    content: attr(title);
+    position: absolute;
+    left: calc(100% + 8px);
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 6px 12px;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--text-primary);
+    white-space: nowrap;
+    box-shadow: var(--shadow);
+    z-index: 1000;
+    pointer-events: none;
 }
 
 /* Sidebar styles */

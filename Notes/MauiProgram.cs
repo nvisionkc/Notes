@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Notes.Data;
+using Notes.Modules.Services;
 using Notes.Services;
+using Notes.Services.IntelliSense;
 
 namespace Notes;
 
@@ -33,7 +35,38 @@ public static class MauiProgram
         builder.Services.AddDbContextFactory<NotesDbContext>(options =>
             options.UseSqlite($"Data Source={dbPath}"));
 
-        // Services
+        // ==========================================
+        // Module System - Load modules before building
+        // ==========================================
+        var modulesPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Notes", "Modules");
+
+        // Create module loader and discover modules
+        var moduleLoader = new ModuleLoader();
+        moduleLoader.DiscoverAndLoadModulesAsync(modulesPath).GetAwaiter().GetResult();
+
+        // Let modules register their services
+        foreach (var loaded in moduleLoader.LoadedModules)
+        {
+            try
+            {
+                loaded.Module.ConfigureServices(builder.Services);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Module {loaded.Module.Name} failed to configure services: {ex.Message}");
+            }
+        }
+
+        // Register module infrastructure as singletons
+        builder.Services.AddSingleton<IModuleLoader>(moduleLoader);
+        builder.Services.AddSingleton<IModuleManager, ModuleManager>();
+
+        // ==========================================
+        // Core Services
+        // ==========================================
+        builder.Services.AddSingleton<INavigationService, NavigationService>();
         builder.Services.AddSingleton<IThemeService, ThemeService>();
         builder.Services.AddSingleton<SaveOnCloseService>();
 #if WINDOWS
@@ -43,10 +76,16 @@ public static class MauiProgram
 #endif
         builder.Services.AddScoped<INoteService, NoteService>();
         builder.Services.AddScoped<IScriptingService, ScriptingService>();
+        builder.Services.AddSingleton<ICompletionService, CompletionService>();
+        builder.Services.AddScoped<CompletionInterop>();
 
         var app = builder.Build();
 
-        // Initialize database on startup
+        // ==========================================
+        // Post-Build Initialization
+        // ==========================================
+
+        // Initialize database
         using (var scope = app.Services.CreateScope())
         {
             var factory = scope.ServiceProvider
@@ -65,6 +104,14 @@ public static class MauiProgram
                 context.Database.EnsureCreated();
             }
         }
+
+        // Initialize modules after app is built
+        moduleLoader.InitializeModulesAsync(app.Services).GetAwaiter().GetResult();
+
+        // Register module navigation items with the navigation service
+        var moduleManager = app.Services.GetRequiredService<IModuleManager>();
+        var navigationService = app.Services.GetRequiredService<INavigationService>();
+        moduleManager.RegisterModuleNavigationItems(navigationService);
 
         return app;
     }

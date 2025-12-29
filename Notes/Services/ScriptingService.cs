@@ -1,8 +1,11 @@
 using System.Diagnostics;
+using System.Dynamic;
 using Microsoft.CodeAnalysis.CSharp.Scripting;
 using Microsoft.CodeAnalysis.Scripting;
 using Microsoft.EntityFrameworkCore;
 using Notes.Data;
+using Notes.Modules.Abstractions;
+using Notes.Modules.Services;
 using Notes.Services.Scripting;
 using Script = Notes.Data.Entities.Script;
 
@@ -11,12 +14,19 @@ namespace Notes.Services;
 public class ScriptingService : IScriptingService
 {
     private readonly IDbContextFactory<NotesDbContext> _contextFactory;
+    private readonly IModuleManager? _moduleManager;
+    private readonly IServiceProvider _serviceProvider;
     private readonly ScriptOptions _scriptOptions;
     private static readonly TimeSpan ExecutionTimeout = TimeSpan.FromSeconds(30);
 
-    public ScriptingService(IDbContextFactory<NotesDbContext> contextFactory)
+    public ScriptingService(
+        IDbContextFactory<NotesDbContext> contextFactory,
+        IServiceProvider serviceProvider,
+        IModuleManager? moduleManager = null)
     {
         _contextFactory = contextFactory;
+        _serviceProvider = serviceProvider;
+        _moduleManager = moduleManager;
 
         // Configure script options with common imports
         _scriptOptions = ScriptOptions.Default
@@ -29,14 +39,16 @@ public class ScriptingService : IScriptingService
                 "System.Net",
                 "System.Net.Http",
                 "System.Text.Json",
-                "System.Threading.Tasks"
+                "System.Threading.Tasks",
+                "System.Dynamic"
             )
             .WithReferences(
                 typeof(object).Assembly,
                 typeof(Enumerable).Assembly,
                 typeof(System.Text.RegularExpressions.Regex).Assembly,
                 typeof(System.Net.Http.HttpClient).Assembly,
-                typeof(System.Text.Json.JsonDocument).Assembly
+                typeof(System.Text.Json.JsonDocument).Assembly,
+                typeof(ExpandoObject).Assembly
             );
     }
 
@@ -109,6 +121,9 @@ public class ScriptingService : IScriptingService
             using var linkedCts = CancellationTokenSource
                 .CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
+            // Register module extensions
+            RegisterModuleExtensions(globals, linkedCts.Token);
+
             // Execute script
             var scriptResult = await CSharpScript.EvaluateAsync<object?>(
                 code,
@@ -149,11 +164,37 @@ public class ScriptingService : IScriptingService
         return result;
     }
 
+    private void RegisterModuleExtensions(ScriptGlobals globals, CancellationToken cancellationToken)
+    {
+        if (_moduleManager == null) return;
+
+        foreach (var extension in _moduleManager.GetScriptExtensions())
+        {
+            try
+            {
+                var context = new ScriptExecutionContext
+                {
+                    Globals = globals,
+                    CancellationToken = cancellationToken,
+                    Services = _serviceProvider
+                };
+
+                var instance = extension.CreateInstance(_serviceProvider, context);
+                globals.RegisterExtension(extension.Prefix, instance);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to create extension {extension.Prefix}: {ex.Message}");
+            }
+        }
+    }
+
     private static string GetDefaultScriptTemplate() => """
         // Script globals available:
         // - NoteContent (HTML), NotePlainText, NoteTitle
         // - ClipboardText, ClipboardHistory
         // - Print(msg), StripHtml(html), ToHtml(text)
+        // - Extensions.* (module-provided methods)
 
         // Example: Transform note text to uppercase
         var text = StripHtml(NoteContent);

@@ -1,51 +1,33 @@
 @inherits LayoutComponentBase
 @inject IThemeService ThemeService
+@inject INavigationService NavigationService
 @implements IDisposable
 
 <div class="app-container @ThemeClass">
+    <IconRail />
+
     <div class="sidebar-panel">
-        <div class="tab-bar">
-            <button class="tab @(ActiveTab == "notes" ? "active" : "")"
-                    @onclick="@(() => SetActiveTab("notes"))">
-                Notes
-            </button>
-            <button class="tab @(ActiveTab == "clipboard" ? "active" : "")"
-                    @onclick="@(() => SetActiveTab("clipboard"))">
-                Clipboard
-            </button>
-            <button class="tab @(ActiveTab == "scripts" ? "active" : "")"
-                    @onclick="@(() => SetActiveTab("scripts"))">
-                Scripts
-            </button>
-            <button class="pin-button @(_isPinned ? "pinned" : "")"
-                    @onclick="TogglePin"
-                    title="@(_isPinned ? "Unpin window (make draggable)" : "Pin to bottom-right")">
-                <span class="pin-icon">@(_isPinned ? "📌" : "📍")</span>
-            </button>
-        </div>
-
-        @if (ActiveTab == "notes")
+        @switch (NavigationService.ActiveItemId)
         {
-            <Sidebar @ref="_sidebar"
-                     SelectedNoteId="@SelectedNoteId"
-                     SelectedNoteIdChanged="OnNoteSelected"
-                     OnNewNote="OnNewNote"
-                     OnNoteDeleted="OnNoteDeleted" />
+            case "notes":
+                <Sidebar @ref="_sidebar"
+                         SelectedNoteId="@SelectedNoteId"
+                         SelectedNoteIdChanged="OnNoteSelected"
+                         OnNewNote="OnNewNote"
+                         OnNoteDeleted="OnNoteDeleted" />
+                break;
+            case "clipboard":
+                <ClipboardHistory OnConvertToNote="ConvertClipboardToNote"
+                                  OnItemSelected="OnClipboardItemSelected" />
+                break;
+            case "scripts":
+                <ScriptsPanel @ref="_scriptsPanel"
+                              SelectedScriptId="@SelectedScriptId"
+                              SelectedScriptIdChanged="OnScriptSelected"
+                              OnNewScript="OnNewScript"
+                              OnScriptDeleted="OnScriptDeleted" />
+                break;
         }
-        else if (ActiveTab == "clipboard")
-        {
-            <ClipboardHistory OnConvertToNote="ConvertClipboardToNote"
-                              OnItemSelected="OnClipboardItemSelected" />
-        }
-        else if (ActiveTab == "scripts")
-        {
-            <ScriptsPanel @ref="_scriptsPanel"
-                          SelectedScriptId="@SelectedScriptId"
-                          SelectedScriptIdChanged="OnScriptSelected"
-                          OnNewScript="OnNewScript"
-                          OnScriptDeleted="OnScriptDeleted" />
-        }
-
     </div>
 
     <main class="main-content">
@@ -58,10 +40,12 @@
 @code {
     private Sidebar? _sidebar;
     private ScriptsPanel? _scriptsPanel;
-    private bool _isPinned = true;
     public int? SelectedNoteId { get; private set; }
     public int? SelectedScriptId { get; private set; }
-    public string ActiveTab { get; private set; } = "notes";
+
+    // Backwards compatibility - expose ActiveTab via NavigationService
+    public string ActiveTab => NavigationService.ActiveItemId;
+
     public event Func<int?, Task>? NoteSelectionChanged;
     public event Func<Task>? NewNoteRequested;
     public event Func<int, Task>? NoteDeleteRequested;
@@ -73,14 +57,22 @@
     public event Func<int, Task>? ScriptSaved;
 
 #if WINDOWS
-    [Inject] private Notes.Services.ClipboardService? ClipboardService { get; set; }
-    [Inject] private Notes.Services.TrayService? TrayService { get; set; }
+    [Inject] private ClipboardService? ClipboardService { get; set; }
 #endif
 
     private string ThemeClass => ThemeService.IsDarkMode ? "dark-theme" : "light-theme";
 
     protected override async Task OnInitializedAsync()
     {
+        // Register built-in navigation items
+        RegisterBuiltInNavItems();
+
+        // Load saved navigation state
+        await NavigationService.LoadStateAsync();
+
+        // Subscribe to navigation changes
+        NavigationService.NavigationChanged += OnNavigationChanged;
+
         await ThemeService.InitializeAsync();
         ThemeService.ThemeChanged += OnThemeChanged;
 
@@ -89,24 +81,41 @@
         {
             ClipboardService.NotificationClicked += OnNotificationClicked;
         }
-        if (TrayService != null)
+#endif
+    }
+
+    private void RegisterBuiltInNavItems()
+    {
+        NavigationService.RegisterNavItem(new Models.NavItem
         {
-            _isPinned = TrayService.IsPinned;
-            TrayService.PinStateChanged += OnPinStateChanged;
-        }
-#endif
+            Id = "notes",
+            Label = "Notes",
+            Icon = "<svg width=\"20\" height=\"20\" viewBox=\"0 0 16 16\" fill=\"currentColor\"><path d=\"M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5L14 4.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5h-2z\"/></svg>",
+            IconType = "svg",
+            Order = 10
+        });
+
+        NavigationService.RegisterNavItem(new Models.NavItem
+        {
+            Id = "clipboard",
+            Label = "Clipboard",
+            Icon = "<svg width=\"20\" height=\"20\" viewBox=\"0 0 16 16\" fill=\"currentColor\"><path d=\"M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z\"/><path d=\"M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z\"/></svg>",
+            IconType = "svg",
+            Order = 20
+        });
+
+        NavigationService.RegisterNavItem(new Models.NavItem
+        {
+            Id = "scripts",
+            Label = "Scripts",
+            Icon = "<svg width=\"20\" height=\"20\" viewBox=\"0 0 16 16\" fill=\"currentColor\"><path d=\"M10.478 1.647a.5.5 0 1 0-.956-.294l-4 13a.5.5 0 0 0 .956.294l4-13zM4.854 4.146a.5.5 0 0 1 0 .708L1.707 8l3.147 3.146a.5.5 0 0 1-.708.708l-3.5-3.5a.5.5 0 0 1 0-.708l3.5-3.5a.5.5 0 0 1 .708 0zm6.292 0a.5.5 0 0 0 0 .708L14.293 8l-3.147 3.146a.5.5 0 0 0 .708.708l3.5-3.5a.5.5 0 0 0 0-.708l-3.5-3.5a.5.5 0 0 0-.708 0z\"/></svg>",
+            IconType = "svg",
+            Order = 30
+        });
     }
 
-    private void TogglePin()
+    private void OnNavigationChanged()
     {
-#if WINDOWS
-        TrayService?.TogglePin();
-#endif
-    }
-
-    private void OnPinStateChanged(bool isPinned)
-    {
-        _isPinned = isPinned;
         InvokeAsync(StateHasChanged);
     }
 
@@ -119,7 +128,7 @@
             if (item != null)
             {
                 // Switch to clipboard tab and display content
-                ActiveTab = "clipboard";
+                NavigationService.SetActiveItem("clipboard");
                 StateHasChanged();
 
                 // Trigger the item to be displayed
@@ -137,10 +146,10 @@
         InvokeAsync(StateHasChanged);
     }
 
-    private void SetActiveTab(string tab)
+    // For backwards compatibility with Home.razor
+    public void SetActiveTab(string tab)
     {
-        ActiveTab = tab;
-        StateHasChanged();
+        NavigationService.SetActiveItem(tab);
     }
 
     private async Task OnNoteSelected(int? noteId)
@@ -219,7 +228,7 @@
 
     private async Task ConvertClipboardToNote((string Content, bool IsImage) data)
     {
-        ActiveTab = "notes";
+        NavigationService.SetActiveItem("notes");
         SelectedNoteId = null;
         if (ClipboardConvertRequested != null)
         {
@@ -252,15 +261,12 @@
 
     public void Dispose()
     {
+        NavigationService.NavigationChanged -= OnNavigationChanged;
         ThemeService.ThemeChanged -= OnThemeChanged;
 #if WINDOWS
         if (ClipboardService != null)
         {
             ClipboardService.NotificationClicked -= OnNotificationClicked;
-        }
-        if (TrayService != null)
-        {
-            TrayService.PinStateChanged -= OnPinStateChanged;
         }
 #endif
     }

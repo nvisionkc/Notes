@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Dynamic;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -216,4 +217,25 @@ public partial class ScriptGlobals
 
     [GeneratedRegex("<[^>]+>")]
     private static partial Regex HtmlTagRegex();
+
+    // === Module Extensions ===
+
+    /// <summary>
+    /// Dynamic object containing module-contributed extensions.
+    /// Access via Extensions.PrefixName.Method() (e.g., Extensions.Http.Get())
+    /// </summary>
+    public dynamic Extensions { get; } = new ExpandoObject();
+
+    /// <summary>
+    /// Internal dictionary access to add extensions
+    /// </summary>
+    internal IDictionary<string, object?> ExtensionsDict => (IDictionary<string, object?>)Extensions;
+
+    /// <summary>
+    /// Register a module extension instance
+    /// </summary>
+    internal void RegisterExtension(string prefix, object extensionInstance)
+    {
+        ExtensionsDict[prefix] = extensionInstance;
+    }
 }

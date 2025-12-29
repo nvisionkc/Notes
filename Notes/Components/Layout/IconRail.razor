@@ -1,0 +1,116 @@
+@inject INavigationService NavigationService
+@implements IDisposable
+
+<nav class="icon-rail @(NavigationService.IsRailExpanded ? "expanded" : "")">
+    <div class="rail-items">
+        @foreach (var item in NavigationService.NavItems)
+        {
+            <button class="rail-item @(NavigationService.ActiveItemId == item.Id ? "active" : "")"
+                    @onclick="() => SelectItem(item.Id)"
+                    title="@(NavigationService.IsRailExpanded ? "" : item.Label)">
+                <span class="rail-icon">
+                    @if (item.IconType == "svg")
+                    {
+                        @((MarkupString)item.Icon)
+                    }
+                    else
+                    {
+                        @item.Icon
+                    }
+                </span>
+                <span class="rail-label">@item.Label</span>
+            </button>
+        }
+    </div>
+
+    <div class="rail-footer">
+#if WINDOWS
+        <button class="rail-item pin-item @(_isPinned ? "pinned" : "")"
+                @onclick="TogglePin"
+                title="@(NavigationService.IsRailExpanded ? "" : (_isPinned ? "Unpin window" : "Pin to corner"))">
+            <span class="rail-icon pin-icon">@(_isPinned ? "📌" : "📍")</span>
+            <span class="rail-label">@(_isPinned ? "Pinned" : "Pin Window")</span>
+        </button>
+#endif
+        <button class="rail-item expand-toggle"
+                @onclick="ToggleExpand"
+                title="@(NavigationService.IsRailExpanded ? "" : "Expand menu")">
+            <span class="rail-icon chevron-icon">
+                @if (NavigationService.IsRailExpanded)
+                {
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M11.354 1.646a.5.5 0 0 1 0 .708L5.707 8l5.647 5.646a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0z"/>
+                    </svg>
+                }
+                else
+                {
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/>
+                    </svg>
+                }
+            </span>
+            <span class="rail-label">@(NavigationService.IsRailExpanded ? "Collapse" : "Expand")</span>
+        </button>
+    </div>
+</nav>
+
+@code {
+    private bool _isPinned = true;
+
+#if WINDOWS
+    [Inject] private TrayService? TrayService { get; set; }
+#endif
+
+    protected override void OnInitialized()
+    {
+        NavigationService.NavigationChanged += OnNavigationChanged;
+        NavigationService.RailExpandedChanged += OnRailExpandedChanged;
+
+#if WINDOWS
+        if (TrayService != null)
+        {
+            _isPinned = TrayService.IsPinned;
+            TrayService.PinStateChanged += OnPinStateChanged;
+        }
+#endif
+    }
+
+    private void SelectItem(string itemId)
+    {
+        NavigationService.SetActiveItem(itemId);
+    }
+
+    private void ToggleExpand()
+    {
+        NavigationService.ToggleRailExpanded();
+    }
+
+    private void TogglePin()
+    {
+#if WINDOWS
+        TrayService?.TogglePin();
+#endif
+    }
+
+    private void OnPinStateChanged(bool isPinned)
+    {
+        _isPinned = isPinned;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnNavigationChanged() => InvokeAsync(StateHasChanged);
+    private void OnRailExpandedChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        NavigationService.NavigationChanged -= OnNavigationChanged;
+        NavigationService.RailExpandedChanged -= OnRailExpandedChanged;
+
+#if WINDOWS
+        if (TrayService != null)
+        {
+            TrayService.PinStateChanged -= OnPinStateChanged;
+        }
+#endif
+    }
+}

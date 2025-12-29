@@ -1,5 +1,6 @@
 @inject IScriptingService ScriptingService
 @inject IJSRuntime JSRuntime
+@inject Notes.Services.IntelliSense.CompletionInterop CompletionInterop
 
 <div class="script-editor-page">
     <div class="script-toolbar">
@@ -396,6 +397,22 @@ OutputContent = ToHtml(result);</pre></td>
         {
             // Give Monaco a moment, then check if it initialized
             _ = CheckMonacoInitialized();
+            // Initialize completions via JSInterop
+            _ = InitializeCompletionsAsync();
+        }
+    }
+
+    private async Task InitializeCompletionsAsync()
+    {
+        try
+        {
+            // Wait for Monaco to be ready
+            await Task.Delay(500);
+            await CompletionInterop.InitializeAsync();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to initialize completions: {ex.Message}");
         }
     }
 

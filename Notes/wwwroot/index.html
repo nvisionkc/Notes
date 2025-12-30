@@ -25,6 +25,17 @@
 
     <!-- Monaco Editor -->
     <script>
+        // Block browser shortcuts that break Blazor Hybrid (F5, Ctrl+R, etc.)
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'F5' ||
+                (e.ctrlKey && (e.key === 'r' || e.key === 'R')) ||
+                (e.ctrlKey && (e.key === 'w' || e.key === 'W'))) {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            }
+        }, true); // Use capture phase to catch it early
+
         window.onerror = function(msg, url, line, col, error) {
             console.error('Global error:', msg, url, line, col, error);
             return false;

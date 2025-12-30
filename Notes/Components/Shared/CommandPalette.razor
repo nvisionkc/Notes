@@ -1,0 +1,334 @@
+@inject ICommandService CommandService
+@inject INavigationService NavigationService
+@inject INoteService NoteService
+@inject IScriptingService ScriptingService
+@implements IDisposable
+
+@if (_isVisible)
+{
+    <div class="command-palette-overlay" @onclick="Close" @onkeydown="HandleKeyDown">
+        <div class="command-palette" @onclick:stopPropagation="true">
+            <div class="command-search">
+                <svg class="search-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
+                </svg>
+                <input type="text"
+                       class="command-input"
+                       placeholder="Type a command..."
+                       @ref="_searchInput"
+                       @bind="_searchQuery"
+                       @bind:event="oninput"
+                       @onkeydown="HandleInputKeyDown" />
+                <span class="command-hint">ESC to close</span>
+            </div>
+
+            <div class="command-results">
+                @if (_filteredCommands.Count == 0)
+                {
+                    <div class="no-results">No commands found</div>
+                }
+                else
+                {
+                    var currentCategory = "";
+                    var index = 0;
+                    @foreach (var command in _filteredCommands)
+                    {
+                        if (command.Category != currentCategory)
+                        {
+                            currentCategory = command.Category;
+                            <div class="command-category">@currentCategory</div>
+                        }
+                        var idx = index;
+                        <div class="command-item @(_selectedIndex == idx ? "selected" : "")"
+                             @onclick="() => ExecuteCommand(command)"
+                             @onmouseenter="() => _selectedIndex = idx">
+                            <div class="command-icon">
+                                @if (!string.IsNullOrEmpty(command.Icon))
+                                {
+                                    @((MarkupString)command.Icon)
+                                }
+                                else
+                                {
+                                    @GetCategoryIcon(command.Category)
+                                }
+                            </div>
+                            <div class="command-info">
+                                <div class="command-label">@command.Label</div>
+                                @if (!string.IsNullOrEmpty(command.Description))
+                                {
+                                    <div class="command-desc">@command.Description</div>
+                                }
+                            </div>
+                            <div class="command-category-badge">@command.Category</div>
+                        </div>
+                        index++;
+                    }
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _isVisible;
+    private string _searchQuery = "";
+    private List<Command> _filteredCommands = new();
+    private int _selectedIndex;
+    private ElementReference _searchInput;
+
+    protected override void OnInitialized()
+    {
+        RegisterBuiltInCommands();
+        CommandService.CommandsChanged += OnCommandsChanged;
+        CommandService.OpenPaletteRequested += OnOpenPaletteRequested;
+    }
+
+    private void OnOpenPaletteRequested()
+    {
+        InvokeAsync(async () => await ShowAsync());
+    }
+
+    private void OnCommandsChanged()
+    {
+        InvokeAsync(() =>
+        {
+            UpdateFilteredCommands();
+            StateHasChanged();
+        });
+    }
+
+    private void RegisterBuiltInCommands()
+    {
+        // Navigation commands
+        CommandService.RegisterCommand(new Command
+        {
+            Id = "nav:notes",
+            Label = "Go to Notes",
+            Category = "Navigate",
+            Keywords = "notes documents files",
+            Action = async () => { NavigationService.SetActiveItem("notes"); await Task.CompletedTask; }
+        });
+
+        CommandService.RegisterCommand(new Command
+        {
+            Id = "nav:clipboard",
+            Label = "Go to Clipboard",
+            Category = "Navigate",
+            Keywords = "clipboard history paste copy",
+            Action = async () => { NavigationService.SetActiveItem("clipboard"); await Task.CompletedTask; }
+        });
+
+        CommandService.RegisterCommand(new Command
+        {
+            Id = "nav:scripts",
+            Label = "Go to Scripts",
+            Category = "Navigate",
+            Keywords = "scripts code csharp run execute",
+            Action = async () => { NavigationService.SetActiveItem("scripts"); await Task.CompletedTask; }
+        });
+
+        CommandService.RegisterCommand(new Command
+        {
+            Id = "nav:data-viewer",
+            Label = "Go to JSON/XML Viewer",
+            Category = "Navigate",
+            Keywords = "json xml data format tree viewer",
+            Action = async () => { NavigationService.SetActiveItem("data-viewer"); await Task.CompletedTask; }
+        });
+
+        CommandService.RegisterCommand(new Command
+        {
+            Id = "nav:encoder",
+            Label = "Go to Encoder",
+            Category = "Navigate",
+            Keywords = "encode decode base64 url html hex jwt hash",
+            Action = async () => { NavigationService.SetActiveItem("encoder"); await Task.CompletedTask; }
+        });
+
+        CommandService.RegisterCommand(new Command
+        {
+            Id = "nav:diff",
+            Label = "Go to Diff Tool",
+            Category = "Navigate",
+            Keywords = "diff compare difference text",
+            Action = async () => { NavigationService.SetActiveItem("diff"); await Task.CompletedTask; }
+        });
+
+        CommandService.RegisterCommand(new Command
+        {
+            Id = "nav:ports",
+            Label = "Go to Port Finder",
+            Category = "Navigate",
+            Keywords = "ports process pid kill netstat network",
+            Action = async () => { NavigationService.SetActiveItem("ports"); await Task.CompletedTask; }
+        });
+
+        // Action commands
+        CommandService.RegisterCommand(new Command
+        {
+            Id = "action:new-note",
+            Label = "New Note",
+            Category = "Actions",
+            Keywords = "create add note new document",
+            Description = "Create a new note",
+            Action = async () =>
+            {
+                NavigationService.SetActiveItem("notes");
+                await Task.Delay(50); // Allow navigation to complete
+            }
+        });
+
+        CommandService.RegisterCommand(new Command
+        {
+            Id = "action:new-script",
+            Label = "New Script",
+            Category = "Actions",
+            Keywords = "create add script new code",
+            Description = "Create a new script",
+            Action = async () =>
+            {
+                NavigationService.SetActiveItem("scripts");
+                await Task.Delay(50);
+            }
+        });
+
+        // Load notes and scripts asynchronously
+        _ = LoadNotesAndScriptsAsync();
+    }
+
+    private async Task LoadNotesAndScriptsAsync()
+    {
+        try
+        {
+            // Load notes
+            var notes = await NoteService.GetAllNotesAsync();
+            foreach (var note in notes)
+            {
+                var noteId = note.Id;
+                CommandService.RegisterCommand(new Command
+                {
+                    Id = $"note:{noteId}",
+                    Label = string.IsNullOrWhiteSpace(note.Title) ? "Untitled Note" : note.Title,
+                    Category = "Notes",
+                    Keywords = note.Content?.Substring(0, Math.Min(100, note.Content?.Length ?? 0)),
+                    Description = $"Open note",
+                    Action = async () =>
+                    {
+                        NavigationService.SetActiveItem("notes");
+                        // Note selection will be handled by the navigation change
+                        await Task.CompletedTask;
+                    }
+                });
+            }
+
+            // Load scripts
+            var scripts = await ScriptingService.GetAllScriptsAsync();
+            foreach (var script in scripts)
+            {
+                var scriptId = script.Id;
+                CommandService.RegisterCommand(new Command
+                {
+                    Id = $"script:{scriptId}",
+                    Label = script.Name,
+                    Category = "Scripts",
+                    Keywords = script.Code?.Substring(0, Math.Min(100, script.Code?.Length ?? 0)),
+                    Description = "Open script",
+                    Action = async () =>
+                    {
+                        NavigationService.SetActiveItem("scripts");
+                        await Task.CompletedTask;
+                    }
+                });
+            }
+        }
+        catch
+        {
+            // Ignore errors loading notes/scripts
+        }
+    }
+
+    public async Task ShowAsync()
+    {
+        _isVisible = true;
+        _searchQuery = "";
+        _selectedIndex = 0;
+        UpdateFilteredCommands();
+        StateHasChanged();
+
+        await Task.Delay(50); // Wait for render
+        await _searchInput.FocusAsync();
+    }
+
+    public void Close()
+    {
+        _isVisible = false;
+        _searchQuery = "";
+        StateHasChanged();
+    }
+
+    public bool IsVisible => _isVisible;
+
+    private void UpdateFilteredCommands()
+    {
+        _filteredCommands = CommandService.Search(_searchQuery, 15);
+        if (_selectedIndex >= _filteredCommands.Count)
+        {
+            _selectedIndex = Math.Max(0, _filteredCommands.Count - 1);
+        }
+    }
+
+    private void HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            Close();
+        }
+    }
+
+    private void HandleInputKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowDown":
+                _selectedIndex = Math.Min(_selectedIndex + 1, _filteredCommands.Count - 1);
+                break;
+            case "ArrowUp":
+                _selectedIndex = Math.Max(_selectedIndex - 1, 0);
+                break;
+            case "Enter":
+                if (_selectedIndex >= 0 && _selectedIndex < _filteredCommands.Count)
+                {
+                    _ = ExecuteCommand(_filteredCommands[_selectedIndex]);
+                }
+                break;
+            case "Escape":
+                Close();
+                break;
+        }
+    }
+
+    private async Task ExecuteCommand(Command command)
+    {
+        Close();
+        await CommandService.ExecuteAsync(command.Id);
+    }
+
+    private MarkupString GetCategoryIcon(string category)
+    {
+        var svg = category switch
+        {
+            "Navigate" => "<svg width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"currentColor\"><path d=\"M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0zM4.5 7.5a.5.5 0 0 0 0 1h5.793l-2.147 2.146a.5.5 0 0 0 .708.708l3-3a.5.5 0 0 0 0-.708l-3-3a.5.5 0 1 0-.708.708L10.293 7.5H4.5z\"/></svg>",
+            "Actions" => "<svg width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"currentColor\"><path d=\"M11.251.068a.5.5 0 0 1 .227.58L9.677 6.5H13a.5.5 0 0 1 .364.843l-8 8.5a.5.5 0 0 1-.842-.49L6.323 9.5H3a.5.5 0 0 1-.364-.843l8-8.5a.5.5 0 0 1 .615-.09z\"/></svg>",
+            "Scripts" => "<svg width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"currentColor\"><path d=\"M10.478 1.647a.5.5 0 1 0-.956-.294l-4 13a.5.5 0 0 0 .956.294l4-13zM4.854 4.146a.5.5 0 0 1 0 .708L1.707 8l3.147 3.146a.5.5 0 0 1-.708.708l-3.5-3.5a.5.5 0 0 1 0-.708l3.5-3.5a.5.5 0 0 1 .708 0zm6.292 0a.5.5 0 0 0 0 .708L14.293 8l-3.147 3.146a.5.5 0 0 0 .708.708l3.5-3.5a.5.5 0 0 0 0-.708l-3.5-3.5a.5.5 0 0 0-.708 0z\"/></svg>",
+            "Notes" => "<svg width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"currentColor\"><path d=\"M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5L14 4.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5h-2z\"/></svg>",
+            _ => "<svg width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"currentColor\"><circle cx=\"8\" cy=\"8\" r=\"6\"/></svg>"
+        };
+        return new MarkupString(svg);
+    }
+
+    public void Dispose()
+    {
+        CommandService.CommandsChanged -= OnCommandsChanged;
+        CommandService.OpenPaletteRequested -= OnOpenPaletteRequested;
+    }
+}

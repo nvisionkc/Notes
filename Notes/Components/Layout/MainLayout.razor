@@ -5,36 +5,62 @@
 
 <div class="app-container @ThemeClass">
     <IconRail />
+    <CommandPalette />
 
-    <div class="sidebar-panel">
-        @switch (NavigationService.ActiveItemId)
-        {
-            case "notes":
-                <Sidebar @ref="_sidebar"
-                         SelectedNoteId="@SelectedNoteId"
-                         SelectedNoteIdChanged="OnNoteSelected"
-                         OnNewNote="OnNewNote"
-                         OnNoteDeleted="OnNoteDeleted" />
-                break;
-            case "clipboard":
-                <ClipboardHistory OnConvertToNote="ConvertClipboardToNote"
-                                  OnItemSelected="OnClipboardItemSelected" />
-                break;
-            case "scripts":
-                <ScriptsPanel @ref="_scriptsPanel"
-                              SelectedScriptId="@SelectedScriptId"
-                              SelectedScriptIdChanged="OnScriptSelected"
-                              OnNewScript="OnNewScript"
-                              OnScriptDeleted="OnScriptDeleted" />
-                break;
-        }
-    </div>
+    @if (IsFullPanelView)
+    {
+        <!-- Full-panel views (no sidebar) -->
+        <div class="full-panel-content">
+            @switch (NavigationService.ActiveItemId)
+            {
+                case "data-viewer":
+                    <DataViewerPanel />
+                    break;
+                case "encoder":
+                    <EncoderPanel />
+                    break;
+                case "diff":
+                    <DiffPanel />
+                    break;
+                case "ports":
+                    <PortFinderPanel />
+                    break;
+            }
+        </div>
+    }
+    else
+    {
+        <!-- Standard sidebar + main content layout -->
+        <div class="sidebar-panel">
+            @switch (NavigationService.ActiveItemId)
+            {
+                case "notes":
+                    <Sidebar @ref="_sidebar"
+                             SelectedNoteId="@SelectedNoteId"
+                             SelectedNoteIdChanged="OnNoteSelected"
+                             OnNewNote="OnNewNote"
+                             OnNoteDeleted="OnNoteDeleted" />
+                    break;
+                case "clipboard":
+                    <ClipboardHistory OnConvertToNote="ConvertClipboardToNote"
+                                      OnItemSelected="OnClipboardItemSelected" />
+                    break;
+                case "scripts":
+                    <ScriptsPanel @ref="_scriptsPanel"
+                                  SelectedScriptId="@SelectedScriptId"
+                                  SelectedScriptIdChanged="OnScriptSelected"
+                                  OnNewScript="OnNewScript"
+                                  OnScriptDeleted="OnScriptDeleted" />
+                    break;
+            }
+        </div>
 
-    <main class="main-content">
-        <CascadingValue Value="this">
-            @Body
-        </CascadingValue>
-    </main>
+        <main class="main-content">
+            <CascadingValue Value="this">
+                @Body
+            </CascadingValue>
+        </main>
+    }
 </div>
 
 @code {
@@ -42,6 +68,10 @@
     private ScriptsPanel? _scriptsPanel;
     public int? SelectedNoteId { get; private set; }
     public int? SelectedScriptId { get; private set; }
+
+    // Full-panel views don't use sidebar + main content layout
+    private static readonly HashSet<string> FullPanelViews = new() { "data-viewer", "encoder", "diff", "ports" };
+    private bool IsFullPanelView => FullPanelViews.Contains(NavigationService.ActiveItemId);
 
     // Backwards compatibility - expose ActiveTab via NavigationService
     public string ActiveTab => NavigationService.ActiveItemId;
@@ -111,6 +141,42 @@
             Icon = "<svg width=\"20\" height=\"20\" viewBox=\"0 0 16 16\" fill=\"currentColor\"><path d=\"M10.478 1.647a.5.5 0 1 0-.956-.294l-4 13a.5.5 0 0 0 .956.294l4-13zM4.854 4.146a.5.5 0 0 1 0 .708L1.707 8l3.147 3.146a.5.5 0 0 1-.708.708l-3.5-3.5a.5.5 0 0 1 0-.708l3.5-3.5a.5.5 0 0 1 .708 0zm6.292 0a.5.5 0 0 0 0 .708L14.293 8l-3.147 3.146a.5.5 0 0 0 .708.708l3.5-3.5a.5.5 0 0 0 0-.708l-3.5-3.5a.5.5 0 0 0-.708 0z\"/></svg>",
             IconType = "svg",
             Order = 30
+        });
+
+        NavigationService.RegisterNavItem(new Models.NavItem
+        {
+            Id = "data-viewer",
+            Label = "JSON/XML",
+            Icon = "<svg width=\"20\" height=\"20\" viewBox=\"0 0 16 16\" fill=\"currentColor\"><path d=\"M5.759 13.644c-.497.182-.873.27-1.116.27-.614 0-.945-.266-.945-.788 0-.266.09-.469.295-.611.19-.144.515-.27.957-.37l.376-.075c.227-.048.377-.14.453-.266.062-.116.09-.352.09-.705V5.378c0-.357-.028-.596-.09-.715-.076-.127-.227-.22-.453-.266l-.377-.075c-.443-.1-.762-.223-.951-.367-.199-.142-.299-.345-.299-.611 0-.522.332-.788.947-.788.248 0 .617.088 1.114.27l4.91 1.805c.541.196.811.525.811.996 0 .47-.27.8-.81.996l-4.91 1.805zm-.233 1.073l4.91-1.801c.541-.196.811-.525.811-.997 0-.472-.27-.8-.81-.997l-4.91-1.8c-.498-.183-.873-.271-1.116-.271-.614 0-.946.266-.946.788 0 .266.09.469.296.611.19.144.515.27.957.37l.376.075c.227.047.377.139.453.266.062.116.09.352.09.705v5.821c0 .357-.028.596-.09.715-.076.127-.227.22-.453.266l-.377.075c-.443.1-.762.223-.951.367-.199.142-.299.345-.299.611 0 .522.332.788.947.788.248 0 .617-.089 1.114-.271z\"/></svg>",
+            IconType = "svg",
+            Order = 40
+        });
+
+        NavigationService.RegisterNavItem(new Models.NavItem
+        {
+            Id = "encoder",
+            Label = "Encode",
+            Icon = "<svg width=\"20\" height=\"20\" viewBox=\"0 0 16 16\" fill=\"currentColor\"><path d=\"M3.5 11.5a3.5 3.5 0 1 1 3.163-5H14L15.5 8 14 9.5l-1-1-1 1-1-1-1 1-1-1H6.663a3.5 3.5 0 0 1-3.163 2zM2.5 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4z\"/></svg>",
+            IconType = "svg",
+            Order = 50
+        });
+
+        NavigationService.RegisterNavItem(new Models.NavItem
+        {
+            Id = "diff",
+            Label = "Diff",
+            Icon = "<svg width=\"20\" height=\"20\" viewBox=\"0 0 16 16\" fill=\"currentColor\"><path d=\"M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z\"/><path d=\"M2 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v4h10V2a1 1 0 0 0-1-1H4zm9 6H3v6a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V7z\"/></svg>",
+            IconType = "svg",
+            Order = 60
+        });
+
+        NavigationService.RegisterNavItem(new Models.NavItem
+        {
+            Id = "ports",
+            Label = "Ports",
+            Icon = "<svg width=\"20\" height=\"20\" viewBox=\"0 0 16 16\" fill=\"currentColor\"><path d=\"M6 .5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1H9v1.07a7.001 7.001 0 0 1 3.274 12.474l.601.602a.5.5 0 0 1-.707.708l-.746-.746A6.97 6.97 0 0 1 8 16a6.97 6.97 0 0 1-3.422-.892l-.746.746a.5.5 0 0 1-.707-.708l.602-.602A7.001 7.001 0 0 1 7 2.07V1h-.5A.5.5 0 0 1 6 .5zM8 3a6 6 0 1 0 0 12A6 6 0 0 0 8 3z\"/><path d=\"M8 5.5a.5.5 0 0 1 .5.5v3.5H11a.5.5 0 0 1 0 1H8a.5.5 0 0 1-.5-.5V6a.5.5 0 0 1 .5-.5z\"/></svg>",
+            IconType = "svg",
+            Order = 70
         });
     }
 

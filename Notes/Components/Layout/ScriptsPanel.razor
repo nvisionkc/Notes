@@ -1,11 +1,19 @@
 @inject IScriptingService ScriptingService
+@using Notes.Components.Scripts
 
 <div class="scripts-panel">
     <div class="scripts-header">
         <h2>Scripts</h2>
-        <button class="btn-new" @onclick="CreateNewScript" title="New Script">
-            <span class="icon">+</span>
-        </button>
+        <div class="header-actions">
+            <button class="btn-templates" @onclick="OpenTemplates" title="Browse Templates">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M9.828 3h3.982a2 2 0 0 1 1.992 2.181l-.637 7A2 2 0 0 1 13.174 14H2.826a2 2 0 0 1-1.991-1.819l-.637-7a1.99 1.99 0 0 1 .342-1.31L.5 3a2 2 0 0 1 2-2h3.672a2 2 0 0 1 1.414.586l.828.828A2 2 0 0 0 9.828 3zm-8.322.12C1.72 3.042 1.95 3 2.19 3h5.396l-.707-.707A1 1 0 0 0 6.172 2H2.5a1 1 0 0 0-1 .981l.006.139z"/>
+                </svg>
+            </button>
+            <button class="btn-new" @onclick="CreateNewScript" title="New Script">
+                <span class="icon">+</span>
+            </button>
+        </div>
     </div>
 
     <div class="scripts-list">
@@ -51,6 +59,10 @@
     </div>
 </div>
 
+<ScriptTemplateModal IsOpen="_showTemplates"
+                     OnClose="CloseTemplates"
+                     OnTemplateImported="OnTemplateImported" />
+
 @code {
     [Parameter] public int? SelectedScriptId { get; set; }
     [Parameter] public EventCallback<int?> SelectedScriptIdChanged { get; set; }
@@ -59,6 +71,7 @@
 
     private List<Script> _scripts = new();
     private string? _error;
+    private bool _showTemplates;
 
     protected override async Task OnInitializedAsync()
     {
@@ -104,5 +117,21 @@
         if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
         if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
         return time.ToLocalTime().ToString("MMM d");
+    }
+
+    private void OpenTemplates()
+    {
+        _showTemplates = true;
+    }
+
+    private void CloseTemplates()
+    {
+        _showTemplates = false;
+    }
+
+    private async Task OnTemplateImported(int scriptId)
+    {
+        await RefreshScriptsAsync();
+        await SelectedScriptIdChanged.InvokeAsync(scriptId);
     }
 }

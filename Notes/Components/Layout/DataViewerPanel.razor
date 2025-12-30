@@ -1,0 +1,245 @@
+@using Notes.Services
+@using Notes.Components.Shared
+@inject IDataFormatterService DataFormatter
+@inject IJSRuntime JS
+
+<div class="data-viewer-panel">
+    <div class="data-viewer-toolbar">
+        <div class="toolbar-group">
+            <button class="toolbar-btn @(ViewMode == DataViewMode.Raw ? "active" : "")"
+                    @onclick="() => ViewMode = DataViewMode.Raw" title="Raw Text">
+                Raw
+            </button>
+            <button class="toolbar-btn @(ViewMode == DataViewMode.Tree ? "active" : "")"
+                    @onclick="() => ViewMode = DataViewMode.Tree" title="Tree View">
+                Tree
+            </button>
+        </div>
+
+        <div class="toolbar-group">
+            <button class="toolbar-btn" @onclick="FormatContent" disabled="@(!CanFormat)" title="Format (Ctrl+Shift+F)">
+                Format
+            </button>
+            <button class="toolbar-btn" @onclick="MinifyContent" disabled="@(!CanFormat)" title="Minify">
+                Minify
+            </button>
+        </div>
+
+        <div class="toolbar-group">
+            <button class="toolbar-btn" @onclick="LoadFromClipboard" title="Load from Clipboard">
+                Paste
+            </button>
+            <button class="toolbar-btn" @onclick="CopyToClipboard" disabled="@string.IsNullOrEmpty(_content)" title="Copy to Clipboard">
+                Copy
+            </button>
+            <button class="toolbar-btn" @onclick="ClearContent" disabled="@string.IsNullOrEmpty(_content)" title="Clear">
+                Clear
+            </button>
+        </div>
+
+        <div class="toolbar-status">
+            @if (_detectedType != DataType.Unknown)
+            {
+                <span class="status-badge @(_detectedType.ToString().ToLower())">@_detectedType</span>
+            }
+            @if (!string.IsNullOrEmpty(_statusMessage))
+            {
+                <span class="status-message @(_isError ? "error" : "")">@_statusMessage</span>
+            }
+        </div>
+    </div>
+
+    <div class="data-viewer-content">
+        @if (ViewMode == DataViewMode.Raw)
+        {
+            <textarea class="data-input"
+                      @bind="_content"
+                      @bind:event="oninput"
+                      @onkeyup="OnContentChanged"
+                      placeholder="Paste JSON or XML here..."></textarea>
+        }
+        else
+        {
+            <div class="tree-container">
+                @if (_treeRoot != null)
+                {
+                    <DataTreeView RootNode="_treeRoot"
+                                  OnCopyPath="HandleCopyPath"
+                                  OnCopyValue="HandleCopyValue" />
+                }
+                else if (!string.IsNullOrEmpty(_content))
+                {
+                    <div class="tree-error">
+                        Unable to parse content. Switch to Raw view to edit.
+                    </div>
+                }
+                else
+                {
+                    <div class="tree-empty">
+                        Paste JSON or XML content to view as tree
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private string _content = string.Empty;
+    private DataType _detectedType = DataType.Unknown;
+    private DataNode? _treeRoot;
+    private string _statusMessage = string.Empty;
+    private bool _isError = false;
+    private DataViewMode ViewMode { get; set; } = DataViewMode.Raw;
+
+    private bool CanFormat => _detectedType != DataType.Unknown && !string.IsNullOrEmpty(_content);
+
+    private enum DataViewMode { Raw, Tree }
+
+    private void OnContentChanged()
+    {
+        DetectAndParse();
+    }
+
+    private void DetectAndParse()
+    {
+        _statusMessage = string.Empty;
+        _isError = false;
+
+        if (string.IsNullOrWhiteSpace(_content))
+        {
+            _detectedType = DataType.Unknown;
+            _treeRoot = null;
+            return;
+        }
+
+        _detectedType = DataFormatter.DetectType(_content);
+
+        if (_detectedType == DataType.Unknown)
+        {
+            _treeRoot = null;
+            _statusMessage = "Unknown format";
+            return;
+        }
+
+        try
+        {
+            _treeRoot = DataFormatter.ParseToTree(_content, _detectedType);
+        }
+        catch (Exception ex)
+        {
+            _treeRoot = null;
+            _statusMessage = ex.Message;
+            _isError = true;
+        }
+    }
+
+    private void FormatContent()
+    {
+        if (!CanFormat) return;
+
+        try
+        {
+            _content = _detectedType switch
+            {
+                DataType.Json => DataFormatter.FormatJson(_content),
+                DataType.Xml => DataFormatter.FormatXml(_content),
+                _ => _content
+            };
+            _statusMessage = "Formatted";
+            DetectAndParse();
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = ex.Message;
+            _isError = true;
+        }
+    }
+
+    private void MinifyContent()
+    {
+        if (!CanFormat) return;
+
+        try
+        {
+            _content = _detectedType switch
+            {
+                DataType.Json => DataFormatter.MinifyJson(_content),
+                DataType.Xml => DataFormatter.MinifyXml(_content),
+                _ => _content
+            };
+            _statusMessage = "Minified";
+            DetectAndParse();
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = ex.Message;
+            _isError = true;
+        }
+    }
+
+    private async Task LoadFromClipboard()
+    {
+        try
+        {
+            _content = await JS.InvokeAsync<string>("navigator.clipboard.readText");
+            DetectAndParse();
+            _statusMessage = "Loaded from clipboard";
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = $"Clipboard error: {ex.Message}";
+            _isError = true;
+        }
+    }
+
+    private async Task CopyToClipboard()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _content);
+            _statusMessage = "Copied to clipboard";
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = $"Copy error: {ex.Message}";
+            _isError = true;
+        }
+    }
+
+    private void ClearContent()
+    {
+        _content = string.Empty;
+        _detectedType = DataType.Unknown;
+        _treeRoot = null;
+        _statusMessage = string.Empty;
+    }
+
+    private async Task HandleCopyPath(string path)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", path);
+            _statusMessage = $"Copied: {path}";
+        }
+        catch
+        {
+            _statusMessage = "Failed to copy path";
+            _isError = true;
+        }
+    }
+
+    private async Task HandleCopyValue(string value)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", value);
+            _statusMessage = "Value copied";
+        }
+        catch
+        {
+            _statusMessage = "Failed to copy value";
+            _isError = true;
+        }
+    }
+}

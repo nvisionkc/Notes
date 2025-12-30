@@ -1,6 +1,10 @@
 @inject IScriptingService ScriptingService
 @inject IJSRuntime JSRuntime
 @inject Notes.Services.IntelliSense.CompletionInterop CompletionInterop
+@inject IDataFormatterService DataFormatter
+@inject INoteService NoteService
+@inject INavigationService NavigationService
+@using Notes.Components.Shared
 
 <div class="script-editor-page">
     <div class="script-toolbar">
@@ -171,6 +175,7 @@ OutputContent = ToHtml(result);</pre></td>
                         <span class="result-type-badge">@_lastResult.ReturnValueType</span>
                         <button class="btn-output-action" @onclick="CopyResult" title="Copy to clipboard">Copy</button>
                         <button class="btn-output-action" @onclick="SaveResult" title="Save to file">Save</button>
+                        <button class="btn-output-action" @onclick="SaveToNote" title="Save to new note">To Note</button>
                     }
                     @if (_lastResult != null)
                     {
@@ -203,15 +208,15 @@ OutputContent = ToHtml(result);</pre></td>
                                             break;
 
                                         case ResultType.Html:
-                                            <div class="console-html-viewer">
+                                            <OutputViewer TypeLabel="HTML" CopyValue="@item.TextValue" DefaultHeight="200">
                                                 <iframe class="html-viewer-small" srcdoc="@item.TextValue"></iframe>
-                                            </div>
+                                            </OutputViewer>
                                             break;
 
                                         case ResultType.Collection:
                                             @if (item.TableValue != null && item.TableColumns != null && item.TableValue.Count > 0)
                                             {
-                                                <div class="console-table-viewer">
+                                                <OutputViewer TypeLabel="Table" CopyValue="@item.JsonValue" DefaultHeight="180">
                                                     <table class="table-viewer">
                                                         <thead>
                                                             <tr>
@@ -233,16 +238,22 @@ OutputContent = ToHtml(result);</pre></td>
                                                             }
                                                         </tbody>
                                                     </table>
-                                                </div>
+                                                </OutputViewer>
                                             }
                                             else
                                             {
-                                                <pre class="json-viewer-small">@item.JsonValue</pre>
+                                                <OutputViewer TypeLabel="JSON" CopyValue="@item.JsonValue" DefaultHeight="150">
+                                                    <pre class="json-viewer-small">@item.JsonValue</pre>
+                                                </OutputViewer>
                                             }
                                             break;
 
                                         case ResultType.Object:
-                                            <pre class="json-viewer-small">@item.JsonValue</pre>
+                                            <OutputViewer TypeLabel="Object" CopyValue="@item.JsonValue" DefaultHeight="180">
+                                                <DataTreeView RootNode="@DataFormatter.ParseToTree(item.JsonValue ?? "{}", DataType.Json)"
+                                                              OnCopyPath="HandleCopyPath"
+                                                              OnCopyValue="HandleCopyValue" />
+                                            </OutputViewer>
                                             break;
 
                                         default:
@@ -262,17 +273,19 @@ OutputContent = ToHtml(result);</pre></td>
                             @switch (_lastResult.ReturnValueType)
                             {
                                 case ResultType.Text:
-                                    <textarea class="text-viewer" readonly>@_lastResult.ReturnValueAsText</textarea>
+                                    <OutputViewer TypeLabel="Text" CopyValue="@_lastResult.ReturnValueAsText" DefaultHeight="120">
+                                        <pre class="text-content">@_lastResult.ReturnValueAsText</pre>
+                                    </OutputViewer>
                                     break;
 
                                 case ResultType.Html:
-                                    <div class="html-viewer-container">
+                                    <OutputViewer TypeLabel="HTML" CopyValue="@_lastResult.ReturnValueAsText" DefaultHeight="250">
                                         <iframe class="html-viewer" srcdoc="@_lastResult.ReturnValueAsText"></iframe>
-                                    </div>
+                                    </OutputViewer>
                                     break;
 
                                 case ResultType.Collection:
-                                    <div class="table-viewer-container">
+                                    <OutputViewer TypeLabel="Table" CopyValue="@_lastResult.ReturnValueAsJson" DefaultHeight="200">
                                         <table class="table-viewer">
                                             <thead>
                                                 <tr>
@@ -297,11 +310,15 @@ OutputContent = ToHtml(result);</pre></td>
                                                 }
                                             </tbody>
                                         </table>
-                                    </div>
+                                    </OutputViewer>
                                     break;
 
                                 case ResultType.Object:
-                                    <pre class="json-viewer">@_lastResult.ReturnValueAsJson</pre>
+                                    <OutputViewer TypeLabel="Object" CopyValue="@_lastResult.ReturnValueAsJson" DefaultHeight="200">
+                                        <DataTreeView RootNode="@DataFormatter.ParseToTree(_lastResult.ReturnValueAsJson ?? "{}", DataType.Json)"
+                                                      OnCopyPath="HandleCopyPath"
+                                                      OnCopyValue="HandleCopyValue" />
+                                    </OutputViewer>
                                     break;
 
                                 default:
@@ -335,6 +352,7 @@ OutputContent = ToHtml(result);</pre></td>
     [Parameter] public Func<(string Content, string PlainText, string Title)>? GetCurrentNote { get; set; }
     [Parameter] public Func<(string Text, List<string> History)>? GetClipboardData { get; set; }
     [Parameter] public EventCallback<string> OnNoteContentUpdate { get; set; }
+    [Parameter] public EventCallback<int> OnNoteSaved { get; set; }
 
     private Script _currentScript = new();
     private ScriptResult? _lastResult;
@@ -561,6 +579,78 @@ OutputContent = ToHtml(result);</pre></td>
         };
 
         await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", textToCopy);
+    }
+
+    private async Task HandleCopyPath(string path)
+    {
+        await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", path);
+    }
+
+    private async Task HandleCopyValue(string value)
+    {
+        await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", value);
+    }
+
+    private async Task SaveToNote()
+    {
+        if (_lastResult?.ReturnValue == null) return;
+
+        // Convert result to HTML based on type
+        string htmlContent = _lastResult.ReturnValueType switch
+        {
+            ResultType.Html => _lastResult.ReturnValueAsText ?? "",
+
+            ResultType.Collection when _lastResult.ReturnValueAsTable != null && _lastResult.TableColumns.Count > 0 =>
+                BuildHtmlTable(_lastResult.ReturnValueAsTable, _lastResult.TableColumns),
+
+            ResultType.Collection or ResultType.Object =>
+                $"<pre style=\"background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 4px; overflow: auto; font-family: 'Cascadia Code', Consolas, monospace; font-size: 13px;\">{System.Web.HttpUtility.HtmlEncode(DataFormatter.FormatJson(_lastResult.ReturnValueAsJson ?? "{}"))}</pre>",
+
+            _ => $"<p>{System.Web.HttpUtility.HtmlEncode(_lastResult.ReturnValueAsText ?? "")}</p>"
+        };
+
+        // Create a new note with the script name as title prefix
+        var note = await NoteService.CreateNoteAsync();
+        note.Title = $"Output: {_currentScript.Name}";
+        note.Content = htmlContent;
+        await NoteService.SaveNoteAsync(note);
+
+        // Navigate to notes and select the new note
+        NavigationService.SetActiveItem("notes");
+        if (OnNoteSaved.HasDelegate)
+        {
+            await OnNoteSaved.InvokeAsync(note.Id);
+        }
+    }
+
+    private string BuildHtmlTable(List<Dictionary<string, object?>> rows, List<string> columns)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append("<table style=\"border-collapse: collapse; width: 100%; font-size: 13px;\">");
+
+        // Header
+        sb.Append("<thead><tr>");
+        foreach (var col in columns)
+        {
+            sb.Append($"<th style=\"border: 1px solid #444; padding: 8px; background: #2d2d2d; text-align: left;\">{System.Web.HttpUtility.HtmlEncode(col)}</th>");
+        }
+        sb.Append("</tr></thead>");
+
+        // Body
+        sb.Append("<tbody>");
+        foreach (var row in rows)
+        {
+            sb.Append("<tr>");
+            foreach (var col in columns)
+            {
+                var value = row.TryGetValue(col, out var val) ? val?.ToString() ?? "" : "";
+                sb.Append($"<td style=\"border: 1px solid #444; padding: 8px;\">{System.Web.HttpUtility.HtmlEncode(value)}</td>");
+            }
+            sb.Append("</tr>");
+        }
+        sb.Append("</tbody></table>");
+
+        return sb.ToString();
     }
 
     private async Task SaveResult()

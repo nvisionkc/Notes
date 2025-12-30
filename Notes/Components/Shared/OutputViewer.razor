@@ -1,0 +1,150 @@
+@inject IJSRuntime JS
+
+<div class="output-viewer @(IsExpanded ? "expanded" : "")" style="@GetContainerStyle()">
+    <div class="output-viewer-toolbar">
+        <span class="output-type-badge">@TypeLabel</span>
+        <div class="output-viewer-actions">
+            <button class="viewer-action-btn" @onclick="CopyContent" title="Copy">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1H2z"/>
+                </svg>
+            </button>
+            <button class="viewer-action-btn" @onclick="ToggleExpand" title="@(IsExpanded ? "Close" : "Expand")">
+                @if (IsExpanded)
+                {
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z"/>
+                    </svg>
+                }
+                else
+                {
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M5.828 10.172a.5.5 0 0 0-.707 0l-4.096 4.096V11.5a.5.5 0 0 0-1 0v3.975a.5.5 0 0 0 .5.5H4.5a.5.5 0 0 0 0-1H1.732l4.096-4.096a.5.5 0 0 0 0-.707zm4.344 0a.5.5 0 0 1 .707 0l4.096 4.096V11.5a.5.5 0 1 1 1 0v3.975a.5.5 0 0 1-.5.5H11.5a.5.5 0 0 1 0-1h2.768l-4.096-4.096a.5.5 0 0 1 0-.707zm0-4.344a.5.5 0 0 0 .707 0l4.096-4.096V4.5a.5.5 0 1 0 1 0V.525a.5.5 0 0 0-.5-.5H11.5a.5.5 0 0 0 0 1h2.768l-4.096 4.096a.5.5 0 0 0 0 .707zm-4.344 0a.5.5 0 0 1-.707 0L1.025 1.732V4.5a.5.5 0 0 1-1 0V.525a.5.5 0 0 1 .5-.5H4.5a.5.5 0 0 1 0 1H1.732l4.096 4.096a.5.5 0 0 1 0 .707z"/>
+                    </svg>
+                }
+            </button>
+        </div>
+    </div>
+    <div class="output-viewer-content" @ref="_contentRef">
+        @ChildContent
+    </div>
+    <div class="output-viewer-resizer"
+         @onmousedown="StartResize"
+         @onmousedown:preventDefault>
+        <div class="resizer-grip"></div>
+    </div>
+</div>
+
+@if (IsExpanded)
+{
+    <div class="output-viewer-modal-overlay @(_isFullscreen ? "fullscreen" : "")" @onclick="ToggleExpand">
+        <div class="output-viewer-modal @(_isFullscreen ? "fullscreen" : "")" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <span class="output-type-badge large">@TypeLabel</span>
+                <div class="modal-actions">
+                    <button class="viewer-action-btn" @onclick="CopyContent" title="Copy">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1H2z"/>
+                        </svg>
+                        Copy
+                    </button>
+                    <button class="viewer-action-btn" @onclick="ToggleFullscreen" title="@(_isFullscreen ? "Exit fullscreen" : "Fullscreen")">
+                        @if (_isFullscreen)
+                        {
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                <path d="M5.5 0a.5.5 0 0 1 .5.5v4A1.5 1.5 0 0 1 4.5 6h-4a.5.5 0 0 1 0-1h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 1 .5-.5zm5 0a.5.5 0 0 1 .5.5v4a.5.5 0 0 0 .5.5h4a.5.5 0 0 1 0 1h-4A1.5 1.5 0 0 1 10 4.5v-4a.5.5 0 0 1 .5-.5zM0 10.5a.5.5 0 0 1 .5-.5h4A1.5 1.5 0 0 1 6 11.5v4a.5.5 0 0 1-1 0v-4a.5.5 0 0 0-.5-.5h-4a.5.5 0 0 1-.5-.5zm10 0a.5.5 0 0 1 .5-.5h4a.5.5 0 0 1 0 1h-4a.5.5 0 0 0-.5.5v4a.5.5 0 0 1-1 0v-4z"/>
+                            </svg>
+                        }
+                        else
+                        {
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                <path d="M1.5 1a.5.5 0 0 0-.5.5v4a.5.5 0 0 1-1 0v-4A1.5 1.5 0 0 1 1.5 0h4a.5.5 0 0 1 0 1h-4zM10 .5a.5.5 0 0 1 .5-.5h4A1.5 1.5 0 0 1 16 1.5v4a.5.5 0 0 1-1 0v-4a.5.5 0 0 0-.5-.5h-4a.5.5 0 0 1-.5-.5zM.5 10a.5.5 0 0 1 .5.5v4a.5.5 0 0 0 .5.5h4a.5.5 0 0 1 0 1h-4A1.5 1.5 0 0 1 0 14.5v-4a.5.5 0 0 1 .5-.5zm15 0a.5.5 0 0 1 .5.5v4a1.5 1.5 0 0 1-1.5 1.5h-4a.5.5 0 0 1 0-1h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 1 .5-.5z"/>
+                            </svg>
+                        }
+                    </button>
+                    <button class="modal-close-btn" @onclick="ToggleExpand">
+                        <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="modal-content">
+                @ChildContent
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string TypeLabel { get; set; } = "Output";
+    [Parameter] public string? CopyValue { get; set; }
+    [Parameter] public int MinHeight { get; set; } = 80;
+    [Parameter] public int MaxHeight { get; set; } = 500;
+    [Parameter] public int DefaultHeight { get; set; } = 150;
+
+    private bool IsExpanded;
+    private bool _isFullscreen;
+    private int _currentHeight;
+    private bool _isResizing;
+    private double _startY;
+    private int _startHeight;
+    private ElementReference _contentRef;
+
+    protected override void OnInitialized()
+    {
+        _currentHeight = DefaultHeight;
+    }
+
+    private string GetContainerStyle()
+    {
+        if (IsExpanded) return "";
+        return $"--viewer-height: {_currentHeight}px;";
+    }
+
+    private void ToggleExpand()
+    {
+        IsExpanded = !IsExpanded;
+        if (!IsExpanded) _isFullscreen = false;
+    }
+
+    private void ToggleFullscreen()
+    {
+        _isFullscreen = !_isFullscreen;
+    }
+
+    private async Task CopyContent()
+    {
+        if (!string.IsNullOrEmpty(CopyValue))
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("navigator.clipboard.writeText", CopyValue);
+            }
+            catch { }
+        }
+    }
+
+    private void StartResize(MouseEventArgs e)
+    {
+        _isResizing = true;
+        _startY = e.ClientY;
+        _startHeight = _currentHeight;
+    }
+
+    // Called from parent via JS interop or we handle it inline
+    public void HandleMouseMove(double clientY)
+    {
+        if (!_isResizing) return;
+
+        var delta = clientY - _startY;
+        _currentHeight = (int)Math.Clamp(_startHeight + delta, MinHeight, MaxHeight);
+        StateHasChanged();
+    }
+
+    public void StopResize()
+    {
+        _isResizing = false;
+    }
+}

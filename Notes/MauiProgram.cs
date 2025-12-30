@@ -78,6 +78,12 @@ public static class MauiProgram
         builder.Services.AddScoped<IScriptingService, ScriptingService>();
         builder.Services.AddSingleton<ICompletionService, CompletionService>();
         builder.Services.AddScoped<CompletionInterop>();
+        builder.Services.AddSingleton<IDataFormatterService, DataFormatterService>();
+        builder.Services.AddSingleton<IEncoderService, EncoderService>();
+        builder.Services.AddScoped<IScriptTemplateService, ScriptTemplateService>();
+        builder.Services.AddSingleton<IDiffService, DiffService>();
+        builder.Services.AddSingleton<IPortService, PortService>();
+        builder.Services.AddSingleton<ICommandService, CommandService>();
 
         var app = builder.Build();
 

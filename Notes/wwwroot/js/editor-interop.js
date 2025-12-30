@@ -36,8 +36,15 @@ export function focusEditor(editorId) {
 }
 
 // Setup keyboard shortcut handler to prevent default browser behavior
+// Note: F5, Ctrl+R, Ctrl+W are blocked in index.html (runs earlier)
 export function setupKeyboardHandler(dotNetRef) {
     document.addEventListener('keydown', async (e) => {
+        // Ctrl+Shift+K for Command Palette
+        if (e.ctrlKey && e.shiftKey && (e.key === 'k' || e.key === 'K')) {
+            e.preventDefault();
+            await dotNetRef.invokeMethodAsync('HandleCommandPaletteShortcut');
+            return;
+        }
         if (e.ctrlKey) {
             if (e.key === 's' || e.key === 'S') {
                 e.preventDefault();

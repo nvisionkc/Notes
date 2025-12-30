@@ -1,0 +1,150 @@
+@using Notes.Services
+
+<div class="tree-node @(Node.Children.Any() ? "has-children" : "") @(IsExpanded ? "expanded" : "collapsed")">
+    <div class="tree-node-header" @onclick="ToggleExpand">
+        @if (Node.Children.Any())
+        {
+            <span class="tree-toggle">@(IsExpanded ? "▼" : "▶")</span>
+        }
+        else
+        {
+            <span class="tree-toggle-spacer"></span>
+        }
+
+        <span class="tree-key @GetKeyClass()">@GetKeyDisplay()</span>
+
+        @if (!Node.Children.Any() || Node.Value != null)
+        {
+            <span class="tree-separator">: </span>
+            <span class="tree-value @GetValueClass()" title="@GetValueTooltip()">@GetValueDisplay()</span>
+        }
+        else if (Node.Type == DataNodeType.Object || Node.Type == DataNodeType.Array)
+        {
+            <span class="tree-count">@GetCountDisplay()</span>
+        }
+
+        <div class="tree-actions">
+            <button class="tree-action" @onclick="CopyPath" @onclick:stopPropagation="true" title="Copy path">
+                <span class="action-icon">📋</span>
+            </button>
+            @if (Node.Value != null || !Node.Children.Any())
+            {
+                <button class="tree-action" @onclick="CopyValue" @onclick:stopPropagation="true" title="Copy value">
+                    <span class="action-icon">📄</span>
+                </button>
+            }
+        </div>
+    </div>
+
+    @if (IsExpanded && Node.Children.Any())
+    {
+        <div class="tree-children">
+            @foreach (var child in Node.Children)
+            {
+                <DataTreeNode Node="child" OnCopyPath="OnCopyPath" OnCopyValue="OnCopyValue" />
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public DataNode Node { get; set; } = null!;
+    [Parameter] public EventCallback<string> OnCopyPath { get; set; }
+    [Parameter] public EventCallback<string> OnCopyValue { get; set; }
+
+    private bool IsExpanded { get; set; } = true;
+
+    protected override void OnInitialized()
+    {
+        // Start collapsed for large arrays/objects
+        IsExpanded = Node.Children.Count <= 20;
+    }
+
+    private void ToggleExpand()
+    {
+        if (Node.Children.Any())
+        {
+            IsExpanded = !IsExpanded;
+        }
+    }
+
+    private string GetKeyClass()
+    {
+        return Node.Type switch
+        {
+            DataNodeType.XmlAttribute => "key-attribute",
+            DataNodeType.XmlElement => "key-element",
+            _ => "key-property"
+        };
+    }
+
+    private string GetKeyDisplay()
+    {
+        return Node.Type switch
+        {
+            DataNodeType.XmlAttribute => $"@{Node.Key}",
+            _ => Node.Key
+        };
+    }
+
+    private string GetValueClass()
+    {
+        return Node.Type switch
+        {
+            DataNodeType.String => "value-string",
+            DataNodeType.Number => "value-number",
+            DataNodeType.Boolean => "value-boolean",
+            DataNodeType.Null => "value-null",
+            DataNodeType.XmlText => "value-string",
+            DataNodeType.XmlComment => "value-comment",
+            DataNodeType.XmlAttribute => "value-string",
+            _ => ""
+        };
+    }
+
+    private string GetValueDisplay()
+    {
+        if (Node.Value == null)
+            return "null";
+
+        var str = Node.Value.ToString() ?? "";
+
+        // Truncate long values
+        if (str.Length > 100)
+            return str.Substring(0, 100) + "...";
+
+        return Node.Type switch
+        {
+            DataNodeType.String or DataNodeType.XmlText => $"\"{str}\"",
+            DataNodeType.Boolean => str.ToLower(),
+            _ => str
+        };
+    }
+
+    private string GetValueTooltip()
+    {
+        return Node.Value?.ToString() ?? "null";
+    }
+
+    private string GetCountDisplay()
+    {
+        return Node.Type switch
+        {
+            DataNodeType.Object => $"{{ {Node.Children.Count} }}",
+            DataNodeType.Array => $"[ {Node.Children.Count} ]",
+            DataNodeType.XmlElement when Node.Children.Any() => $"({Node.Children.Count})",
+            _ => ""
+        };
+    }
+
+    private async Task CopyPath()
+    {
+        await OnCopyPath.InvokeAsync(Node.Path);
+    }
+
+    private async Task CopyValue()
+    {
+        var value = Node.Value?.ToString() ?? "";
+        await OnCopyValue.InvokeAsync(value);
+    }
+}

@@ -1,0 +1,229 @@
+@inject IPortService PortService
+
+<div class="port-finder-panel">
+    <div class="port-finder-toolbar">
+        <div class="quick-ports">
+            <span class="quick-label">Quick:</span>
+            @foreach (var port in _commonPorts)
+            {
+                <button class="quick-port-btn @(_selectedPort == port ? "active" : "")"
+                        @onclick="() => SearchPort(port)">
+                    @port
+                </button>
+            }
+        </div>
+
+        <div class="custom-port">
+            <input type="number"
+                   class="port-input"
+                   placeholder="Port..."
+                   @bind="_customPort"
+                   @bind:event="oninput"
+                   @onkeypress="OnPortKeyPress" />
+            <button class="toolbar-btn" @onclick="SearchCustomPort" disabled="@(!_customPort.HasValue)">
+                Search
+            </button>
+        </div>
+
+        <button class="toolbar-btn" @onclick="ShowAllListening">
+            All Listening
+        </button>
+
+        <button class="toolbar-btn" @onclick="Refresh" disabled="@_isLoading">
+            @if (_isLoading)
+            {
+                <span>Loading...</span>
+            }
+            else
+            {
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M11.534 7h3.932a.25.25 0 0 1 .192.41l-1.966 2.36a.25.25 0 0 1-.384 0l-1.966-2.36a.25.25 0 0 1 .192-.41zm-11 2h3.932a.25.25 0 0 0 .192-.41L2.692 6.23a.25.25 0 0 0-.384 0L.342 8.59A.25.25 0 0 0 .534 9z"/>
+                    <path fill-rule="evenodd" d="M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 1 1-.771-.636A6.002 6.002 0 0 1 13.917 7H12.9A5.002 5.002 0 0 0 8 3zM3.1 9a5.002 5.002 0 0 0 8.757 2.182.5.5 0 1 1 .771.636A6.002 6.002 0 0 1 2.083 9H3.1z"/>
+                </svg>
+                <span>Refresh</span>
+            }
+        </button>
+    </div>
+
+    <div class="port-finder-content">
+        @if (_error != null)
+        {
+            <div class="error-message">@_error</div>
+        }
+        else if (_results == null)
+        {
+            <div class="empty-state">
+                <p>Select a port number or click "All Listening" to scan.</p>
+                <p class="hint">Common development ports: 3000, 5000, 5173, 8080</p>
+            </div>
+        }
+        else if (_results.Count == 0)
+        {
+            <div class="empty-state">
+                <p>No processes found on port @_selectedPort</p>
+            </div>
+        }
+        else
+        {
+            <div class="results-header">
+                <span>Found @_results.Count process(es) @(_selectedPort.HasValue ? $"on port {_selectedPort}" : "listening")</span>
+            </div>
+            <table class="port-table">
+                <thead>
+                    <tr>
+                        <th>Port</th>
+                        <th>Protocol</th>
+                        <th>State</th>
+                        <th>PID</th>
+                        <th>Process</th>
+                        <th>Local Address</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in _results)
+                    {
+                        <tr class="@(_killedPids.Contains(item.ProcessId) ? "killed" : "")">
+                            <td class="port-cell">@item.Port</td>
+                            <td>@item.Protocol</td>
+                            <td>
+                                <span class="state-badge @item.State.ToLower()">@item.State</span>
+                            </td>
+                            <td class="pid-cell">@item.ProcessId</td>
+                            <td class="process-cell" title="@item.ProcessName">@item.ProcessName</td>
+                            <td class="address-cell">@item.LocalAddress</td>
+                            <td>
+                                @if (_killedPids.Contains(item.ProcessId))
+                                {
+                                    <span class="killed-label">Killed</span>
+                                }
+                                else if (_confirmKill == item.ProcessId)
+                                {
+                                    <div class="confirm-kill">
+                                        <button class="btn-confirm-yes" @onclick="() => ConfirmKill(item.ProcessId)">Yes</button>
+                                        <button class="btn-confirm-no" @onclick="CancelKill">No</button>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <button class="btn-kill" @onclick="() => RequestKill(item.ProcessId)" title="Kill process">
+                                        Kill
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@code {
+    private readonly int[] _commonPorts = { 3000, 3001, 4200, 5000, 5001, 5173, 8080, 8081, 8443 };
+    private int? _selectedPort;
+    private int? _customPort;
+    private List<PortUsage>? _results;
+    private string? _error;
+    private bool _isLoading;
+    private int? _confirmKill;
+    private HashSet<int> _killedPids = new();
+
+    private async Task SearchPort(int port)
+    {
+        _selectedPort = port;
+        _error = null;
+        _isLoading = true;
+        _confirmKill = null;
+        StateHasChanged();
+
+        try
+        {
+            _results = await PortService.GetPortUsageAsync(port);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _results = null;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task SearchCustomPort()
+    {
+        if (_customPort.HasValue)
+        {
+            await SearchPort(_customPort.Value);
+        }
+    }
+
+    private async Task OnPortKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && _customPort.HasValue)
+        {
+            await SearchCustomPort();
+        }
+    }
+
+    private async Task ShowAllListening()
+    {
+        _selectedPort = null;
+        _error = null;
+        _isLoading = true;
+        _confirmKill = null;
+        StateHasChanged();
+
+        try
+        {
+            _results = await PortService.GetListeningPortsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _results = null;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task Refresh()
+    {
+        if (_selectedPort.HasValue)
+        {
+            await SearchPort(_selectedPort.Value);
+        }
+        else if (_results != null)
+        {
+            await ShowAllListening();
+        }
+    }
+
+    private void RequestKill(int pid)
+    {
+        _confirmKill = pid;
+    }
+
+    private void CancelKill()
+    {
+        _confirmKill = null;
+    }
+
+    private async Task ConfirmKill(int pid)
+    {
+        _confirmKill = null;
+        var success = await PortService.KillProcessAsync(pid);
+        if (success)
+        {
+            _killedPids.Add(pid);
+        }
+        else
+        {
+            _error = $"Failed to kill process {pid}. You may need administrator privileges.";
+        }
+    }
+}

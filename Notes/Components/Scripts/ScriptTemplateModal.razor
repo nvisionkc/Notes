@@ -1,0 +1,129 @@
+@inject IScriptTemplateService TemplateService
+
+@if (IsOpen)
+{
+    <div class="modal-overlay" @onclick="Close">
+        <div class="template-modal" @onclick:stopPropagation>
+            <div class="modal-header">
+                <h3>Script Templates</h3>
+                <button class="modal-close" @onclick="Close">×</button>
+            </div>
+
+            <div class="modal-body">
+                <div class="template-categories">
+                    @foreach (var category in _categories)
+                    {
+                        <button class="category-btn @(_selectedCategory == category.Id ? "active" : "")"
+                                @onclick="() => SelectCategory(category.Id)">
+                            <span class="category-name">@category.Name</span>
+                            <span class="category-count">@GetCategoryCount(category.Id)</span>
+                        </button>
+                    }
+                </div>
+
+                <div class="template-list">
+                    @foreach (var template in _filteredTemplates)
+                    {
+                        <div class="template-item @(_selectedTemplate?.Id == template.Id ? "selected" : "")"
+                             @onclick="() => SelectTemplate(template)">
+                            <div class="template-name">@template.Name</div>
+                            <div class="template-desc">@template.Description</div>
+                        </div>
+                    }
+                </div>
+
+                <div class="template-preview">
+                    @if (_selectedTemplate != null)
+                    {
+                        <div class="preview-header">
+                            <span class="preview-title">@_selectedTemplate.Name</span>
+                            <button class="btn-import" @onclick="ImportTemplate" disabled="@_isImporting">
+                                @if (_isImporting)
+                                {
+                                    <span>Importing...</span>
+                                }
+                                else
+                                {
+                                    <span>+ Add to My Scripts</span>
+                                }
+                            </button>
+                        </div>
+                        <div class="preview-desc">@_selectedTemplate.Description</div>
+                        <pre class="preview-code">@_selectedTemplate.Content</pre>
+                    }
+                    else
+                    {
+                        <div class="preview-placeholder">
+                            Select a template to preview
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<int> OnTemplateImported { get; set; }
+
+    private List<ScriptTemplateCategory> _categories = new();
+    private List<ScriptTemplate> _filteredTemplates = new();
+    private string _selectedCategory = "text";
+    private ScriptTemplate? _selectedTemplate;
+    private bool _isImporting;
+
+    protected override void OnInitialized()
+    {
+        _categories = TemplateService.GetCategories();
+        RefreshTemplates();
+    }
+
+    private void SelectCategory(string categoryId)
+    {
+        _selectedCategory = categoryId;
+        _selectedTemplate = null;
+        RefreshTemplates();
+    }
+
+    private void RefreshTemplates()
+    {
+        _filteredTemplates = TemplateService.GetTemplatesInCategory(_selectedCategory);
+    }
+
+    private int GetCategoryCount(string categoryId)
+    {
+        return TemplateService.GetTemplatesInCategory(categoryId).Count;
+    }
+
+    private void SelectTemplate(ScriptTemplate template)
+    {
+        _selectedTemplate = template;
+    }
+
+    private async Task ImportTemplate()
+    {
+        if (_selectedTemplate == null) return;
+
+        _isImporting = true;
+        StateHasChanged();
+
+        try
+        {
+            var scriptId = await TemplateService.ImportTemplateAsync(_selectedTemplate.Id);
+            await OnTemplateImported.InvokeAsync(scriptId);
+            await Close();
+        }
+        finally
+        {
+            _isImporting = false;
+        }
+    }
+
+    private async Task Close()
+    {
+        _selectedTemplate = null;
+        await OnClose.InvokeAsync();
+    }
+}

@@ -1,0 +1,28 @@
+@using Notes.Services
+
+<div class="data-tree">
+    @if (RootNode != null)
+    {
+        <DataTreeNode Node="RootNode" OnCopyPath="HandleCopyPath" OnCopyValue="HandleCopyValue" />
+    }
+    else
+    {
+        <div class="tree-empty">No data to display</div>
+    }
+</div>
+
+@code {
+    [Parameter] public DataNode? RootNode { get; set; }
+    [Parameter] public EventCallback<string> OnCopyPath { get; set; }
+    [Parameter] public EventCallback<string> OnCopyValue { get; set; }
+
+    private async Task HandleCopyPath(string path)
+    {
+        await OnCopyPath.InvokeAsync(path);
+    }
+
+    private async Task HandleCopyValue(string value)
+    {
+        await OnCopyValue.InvokeAsync(value);
+    }
+}

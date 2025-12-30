@@ -2,6 +2,7 @@
 @inject INoteService NoteService
 @inject IJSRuntime JS
 @inject SaveOnCloseService SaveOnCloseService
+@inject ICommandService CommandService
 @implements IDisposable
 
 @if (Layout?.ActiveTab == "scripts")
@@ -11,7 +12,8 @@
                   OnScriptSaved="OnScriptSaved"
                   GetCurrentNote="GetCurrentNoteData"
                   GetClipboardData="GetClipboardData"
-                  OnNoteContentUpdate="OnNoteContentUpdate" />
+                  OnNoteContentUpdate="OnNoteContentUpdate"
+                  OnNoteSaved="OnScriptOutputSavedToNote" />
 }
 else
 {
@@ -105,6 +107,13 @@ else
     public async Task HandleNewShortcut()
     {
         await CreateNewNote();
+    }
+
+    [JSInvokable]
+    public Task HandleCommandPaletteShortcut()
+    {
+        CommandService.RequestOpenPalette();
+        return Task.CompletedTask;
     }
 
     private async Task OnNoteSelected(int? noteId)
@@ -290,6 +299,17 @@ else
         if (Layout != null)
         {
             await Layout.OnScriptSaved(scriptId);
+        }
+    }
+
+    private async Task OnScriptOutputSavedToNote(int noteId)
+    {
+        // Load the newly created note and refresh sidebar
+        await LoadNote(noteId);
+        if (Layout != null)
+        {
+            Layout.SetSelectedNoteId(noteId);
+            await Layout.RefreshSidebar();
         }
     }
 

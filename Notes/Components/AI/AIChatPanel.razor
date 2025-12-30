@@ -1,0 +1,333 @@
+@inject IClaudeService ClaudeService
+@inject IAISettingsService SettingsService
+@inject INavigationService NavigationService
+@inject IScriptEditorState ScriptEditorState
+@inject IJSRuntime JS
+@implements IDisposable
+
+<div class="ai-chat-panel @(IsOpen ? "open" : "")">
+    <div class="chat-header">
+        <div class="chat-title">
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor">
+                <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533L8.93 6.588zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
+            </svg>
+            <span>AI Assistant</span>
+        </div>
+        <div class="chat-context-badge" title="Current context">
+            @GetContextLabel()
+        </div>
+        <div class="chat-header-actions">
+            <button class="chat-action-btn" @onclick="ClearChat" title="Clear chat" disabled="@(_messages.Count == 0)">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1H2.5zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zM8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7A.5.5 0 0 1 8 5zm3 .5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 1 0z"/>
+                </svg>
+            </button>
+            <button class="chat-action-btn close-btn" @onclick="Close" title="Close (Esc)">
+                <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M2.146 2.854a.5.5 0 1 1 .708-.708L8 7.293l5.146-5.147a.5.5 0 0 1 .708.708L8.707 8l5.147 5.146a.5.5 0 0 1-.708.708L8 8.707l-5.146 5.147a.5.5 0 0 1-.708-.708L7.293 8 2.146 2.854Z"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <div class="chat-messages" @ref="_messagesContainer">
+        @if (!ClaudeService.IsConfigured)
+        {
+            <div class="chat-setup-prompt">
+                <svg width="48" height="48" viewBox="0 0 16 16" fill="currentColor" class="setup-icon">
+                    <path d="M3.5 11.5a3.5 3.5 0 1 1 3.163-5H14L15.5 8 14 9.5l-1-1-1 1-1-1-1 1-1-1H6.663a3.5 3.5 0 0 1-3.163 2zM2.5 9a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"/>
+                </svg>
+                <h3>API Key Required</h3>
+                <p>Configure your Claude API key in AI Settings to start chatting.</p>
+                <button class="btn btn-primary" @onclick="GoToSettings">Open AI Settings</button>
+            </div>
+        }
+        else if (_messages.Count == 0)
+        {
+            <div class="chat-empty">
+                <p>Start a conversation with Claude AI</p>
+                <p class="hint">Context from the current panel will be included automatically</p>
+            </div>
+        }
+        else
+        {
+            @foreach (var message in _messages)
+            {
+                <ChatMessageBubble Message="message" />
+            }
+        }
+    </div>
+
+    @if (ClaudeService.IsConfigured)
+    {
+        <div class="chat-input-area">
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <div class="chat-error">
+                    @_errorMessage
+                    <button class="dismiss-error" @onclick="() => _errorMessage = null">×</button>
+                </div>
+            }
+            <div class="chat-input-wrapper">
+                <textarea class="chat-input"
+                          @ref="_inputElement"
+                          @bind="_inputText"
+                          @bind:event="oninput"
+                          @onkeydown="HandleKeyDown"
+                          placeholder="Type a message... (Enter to send)"
+                          disabled="@_isProcessing"
+                          rows="1"></textarea>
+                <button class="send-btn" @onclick="SendMessage" disabled="@(string.IsNullOrWhiteSpace(_inputText) || _isProcessing)" title="Send (Enter)">
+                    @if (_isProcessing)
+                    {
+                        <div class="spinner"></div>
+                    }
+                    else
+                    {
+                        <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M15.854.146a.5.5 0 0 1 .11.54l-5.819 14.547a.75.75 0 0 1-1.329.124l-3.178-4.995L.643 7.184a.75.75 0 0 1 .124-1.33L15.314.037a.5.5 0 0 1 .54.11ZM6.636 10.07l2.761 4.338L14.13 2.576 6.636 10.07Zm6.787-8.201L1.591 6.602l4.339 2.76 7.494-7.493Z"/>
+                        </svg>
+                    }
+                </button>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public Func<Task<string?>>? GetAdditionalContext { get; set; }
+
+    private List<ChatMessage> _messages = new();
+    private string _inputText = "";
+    private bool _isProcessing;
+    private string? _errorMessage;
+    private ElementReference _messagesContainer;
+    private ElementReference _inputElement;
+    private CancellationTokenSource? _cts;
+
+    protected override void OnInitialized()
+    {
+        NavigationService.NavigationChanged += OnNavigationChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (IsOpen && _messages.Count > 0)
+        {
+            await ScrollToBottom();
+        }
+    }
+
+    private void OnNavigationChanged()
+    {
+        // Could clear chat or just update context badge
+        StateHasChanged();
+    }
+
+    private string GetContextLabel()
+    {
+        return NavigationService.ActiveItemId switch
+        {
+            "scripts" => "Scripts",
+            "notes" => "Notes",
+            "encoder" => "Encoder",
+            "data-viewer" => "JSON/XML",
+            "diff" => "Diff",
+            _ => "General"
+        };
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+        {
+            await SendMessage();
+        }
+        else if (e.Key == "Escape")
+        {
+            await Close();
+        }
+    }
+
+    private async Task SendMessage()
+    {
+        if (string.IsNullOrWhiteSpace(_inputText) || _isProcessing) return;
+
+        var userMessage = _inputText.Trim();
+        _inputText = "";
+        _errorMessage = null;
+
+        // Add user message
+        _messages.Add(new ChatMessage
+        {
+            Role = ChatRole.User,
+            Content = userMessage
+        });
+
+        // Create placeholder for assistant response
+        var assistantMessage = new ChatMessage
+        {
+            Role = ChatRole.Assistant,
+            Content = "",
+            IsStreaming = true
+        };
+        _messages.Add(assistantMessage);
+
+        _isProcessing = true;
+        StateHasChanged();
+        await ScrollToBottom();
+
+        try
+        {
+            _cts = new CancellationTokenSource();
+
+            // Get additional context based on current panel
+            var additionalContext = await GetContextForCurrentPanel();
+
+            // Get chat history (exclude the streaming placeholder)
+            var history = _messages.Take(_messages.Count - 2).ToList();
+
+            if (SettingsService.Settings.StreamResponses)
+            {
+                await foreach (var chunk in ClaudeService.StreamMessageAsync(
+                    userMessage, history, additionalContext, _cts.Token))
+                {
+                    assistantMessage.Content += chunk;
+                    StateHasChanged();
+                    await ScrollToBottom();
+                }
+            }
+            else
+            {
+                var response = await ClaudeService.SendMessageAsync(
+                    userMessage, history, additionalContext, _cts.Token);
+
+                if (response.Success)
+                {
+                    assistantMessage.Content = response.Content ?? "";
+                }
+                else
+                {
+                    _errorMessage = response.ErrorMessage;
+                    _messages.Remove(assistantMessage);
+                }
+            }
+
+            assistantMessage.IsStreaming = false;
+        }
+        catch (OperationCanceledException)
+        {
+            assistantMessage.Content += " [cancelled]";
+            assistantMessage.IsStreaming = false;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+            _messages.Remove(assistantMessage);
+        }
+        finally
+        {
+            _isProcessing = false;
+            _cts?.Dispose();
+            _cts = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task<string?> GetContextForCurrentPanel()
+    {
+        // Allow parent to provide context
+        if (GetAdditionalContext != null)
+        {
+            return await GetAdditionalContext();
+        }
+
+        // Default context based on panel
+        return NavigationService.ActiveItemId switch
+        {
+            "scripts" => GetScriptsContext(),
+            _ => null
+        };
+    }
+
+    private string GetScriptsContext()
+    {
+        var context = """
+            The user is working in the Scripts panel. Scripts are written in C#.
+
+            Available Script Globals:
+            - NoteContent (string) - Current note HTML
+            - NotePlainText (string) - Plain text version
+            - NoteTitle (string) - Note title
+            - ClipboardText (string) - Current clipboard text
+            - ClipboardHistory (List<string>) - Recent clipboard items
+            - OutputContent (string?) - Set this to update the note content
+
+            Helper Methods:
+            - Print(value) - Output to console (auto-detects HTML, collections, objects)
+            - Print(format, args) - Formatted output
+            - StripHtml(html) - Remove HTML tags and decode entities
+            - ToHtml(text) - Convert plain text to HTML paragraphs
+            - TransformLines(text, func) - Transform each line with a function
+
+            Available Namespaces: System, System.Linq, System.Text, System.Text.RegularExpressions, System.Collections.Generic, System.Net.Http, System.Text.Json, System.Threading.Tasks, System.Dynamic
+
+            Scripts have a 30-second timeout. HttpClient is available for web requests.
+            Return values are automatically rendered based on type (text, HTML, JSON, tables).
+            """;
+
+        // Include current script content if available
+        if (!string.IsNullOrEmpty(ScriptEditorState.CurrentContent))
+        {
+            var scriptName = ScriptEditorState.CurrentScriptName ?? "Untitled";
+            context += $"""
+
+
+            --- Current Script: "{scriptName}" ---
+            ```csharp
+            {ScriptEditorState.CurrentContent}
+            ```
+            """;
+        }
+
+        return context;
+    }
+
+    private void ClearChat()
+    {
+        _messages.Clear();
+        _errorMessage = null;
+        StateHasChanged();
+    }
+
+    private async Task Close()
+    {
+        _cts?.Cancel();
+        await OnClose.InvokeAsync();
+    }
+
+    private void GoToSettings()
+    {
+        NavigationService.SetActiveItem("ai-settings");
+        _ = Close();
+    }
+
+    private async Task ScrollToBottom()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("eval", "document.querySelector('.chat-messages')?.scrollTo(0, document.querySelector('.chat-messages')?.scrollHeight)");
+        }
+        catch { }
+    }
+
+    public void Dispose()
+    {
+        NavigationService.NavigationChanged -= OnNavigationChanged;
+        _cts?.Cancel();
+        _cts?.Dispose();
+    }
+}

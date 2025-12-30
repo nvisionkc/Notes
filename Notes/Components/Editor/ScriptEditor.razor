@@ -1,10 +1,13 @@
 @inject IScriptingService ScriptingService
+@inject IScriptEditorState ScriptEditorState
 @inject IJSRuntime JSRuntime
 @inject Notes.Services.IntelliSense.CompletionInterop CompletionInterop
 @inject IDataFormatterService DataFormatter
 @inject INoteService NoteService
 @inject INavigationService NavigationService
 @using Notes.Components.Shared
+@using Notes.Services.AI
+@implements IAsyncDisposable
 
 <div class="script-editor-page">
     <div class="script-toolbar">
@@ -21,7 +24,7 @@
             <button class="btn-run @(_isRunning ? "running" : "")"
                     @onclick="RunScript"
                     disabled="@_isRunning"
-                    title="Run Script">
+                    title="Run Script (F5)">
                 @if (_isRunning)
                 {
                     <span>Running...</span>
@@ -411,13 +414,39 @@ OutputContent = ToHtml(result);</pre></td>
 
     protected override void OnAfterRender(bool firstRender)
     {
-        if (firstRender && _useMonaco)
+        if (firstRender)
         {
-            // Give Monaco a moment, then check if it initialized
-            _ = CheckMonacoInitialized();
-            // Initialize completions via JSInterop
-            _ = InitializeCompletionsAsync();
+            // Register F5 handler globally
+            _ = RegisterF5HandlerAsync();
+
+            if (_useMonaco)
+            {
+                // Give Monaco a moment, then check if it initialized
+                _ = CheckMonacoInitialized();
+                // Initialize completions via JSInterop
+                _ = InitializeCompletionsAsync();
+            }
         }
+    }
+
+    private async Task RegisterF5HandlerAsync()
+    {
+        try
+        {
+            _dotNetRef?.Dispose();
+            _dotNetRef = DotNetObjectReference.Create(this);
+            await JSRuntime.InvokeVoidAsync("registerScriptEditorF5", _dotNetRef);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to register F5 handler: {ex.Message}");
+        }
+    }
+
+    [JSInvokable]
+    public async Task RunScriptFromJs()
+    {
+        await RunScript();
     }
 
     private async Task InitializeCompletionsAsync()
@@ -465,6 +494,9 @@ OutputContent = ToHtml(result);</pre></td>
         if (_monacoEditor != null)
         {
             _currentScript.Code = await _monacoEditor.GetValue();
+            // Sync to state service for AI context
+            ScriptEditorState.CurrentContent = _currentScript.Code;
+            ScriptEditorState.CurrentScriptName = _currentScript.Name;
         }
     }
 
@@ -488,6 +520,9 @@ OutputContent = ToHtml(result);</pre></td>
             {
                 await _monacoEditor.SetValue(script.Code);
             }
+            // Sync to state service for AI context
+            ScriptEditorState.CurrentContent = script.Code;
+            ScriptEditorState.CurrentScriptName = script.Name;
             StateHasChanged();
         }
     }
@@ -501,6 +536,9 @@ OutputContent = ToHtml(result);</pre></td>
         {
             await _monacoEditor.SetValue(_currentScript.Code);
         }
+        // Sync to state service for AI context
+        ScriptEditorState.CurrentContent = _currentScript.Code;
+        ScriptEditorState.CurrentScriptName = _currentScript.Name;
         StateHasChanged();
     }
 
@@ -682,5 +720,15 @@ OutputContent = ToHtml(result);</pre></td>
             $"script-output.{extension}",
             content,
             mimeType);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("unregisterScriptEditorF5");
+        }
+        catch { }
+        _dotNetRef?.Dispose();
     }
 }

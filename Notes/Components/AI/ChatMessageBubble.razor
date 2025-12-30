@@ -1,0 +1,79 @@
+@inject IJSRuntime JS
+
+<div class="chat-message @(Message.Role == ChatRole.User ? "user" : "assistant") @(Message.IsStreaming ? "streaming" : "")">
+    <div class="message-content">
+        @if (Message.Role == ChatRole.Assistant)
+        {
+            @((MarkupString)FormatContent(Message.Content))
+        }
+        else
+        {
+            <span>@Message.Content</span>
+        }
+        @if (Message.IsStreaming)
+        {
+            <span class="typing-cursor">|</span>
+        }
+    </div>
+    <div class="message-footer">
+        <span class="message-time">@Message.Timestamp.ToLocalTime().ToString("HH:mm")</span>
+        @if (!Message.IsStreaming && !string.IsNullOrEmpty(Message.Content))
+        {
+            <button class="copy-btn" @onclick="CopyContent" title="Copy">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M4 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6zM2 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-1h1v1a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h1v1H2z"/>
+                </svg>
+            </button>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public ChatMessage Message { get; set; } = default!;
+
+    private async Task CopyContent()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", Message.Content);
+        }
+        catch { }
+    }
+
+    private string FormatContent(string content)
+    {
+        if (string.IsNullOrEmpty(content)) return "";
+
+        // Simple markdown-like formatting for code blocks
+        var result = System.Net.WebUtility.HtmlEncode(content);
+
+        // Code blocks (```lang ... ```)
+        result = System.Text.RegularExpressions.Regex.Replace(
+            result,
+            @"```(\w*)\r?\n([\s\S]*?)```",
+            match =>
+            {
+                var lang = match.Groups[1].Value;
+                var code = match.Groups[2].Value.TrimEnd();
+                return $"<pre class=\"code-block\" data-lang=\"{lang}\"><code>{code}</code></pre>";
+            });
+
+        // Inline code (`code`)
+        result = System.Text.RegularExpressions.Regex.Replace(
+            result,
+            @"`([^`]+)`",
+            "<code class=\"inline-code\">$1</code>");
+
+        // Bold (**text**)
+        result = System.Text.RegularExpressions.Regex.Replace(
+            result,
+            @"\*\*([^*]+)\*\*",
+            "<strong>$1</strong>");
+
+        // Line breaks
+        result = result.Replace("\n", "<br/>");
+
+        return result;
+    }
+}

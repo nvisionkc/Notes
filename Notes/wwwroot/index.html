@@ -26,9 +26,26 @@
     <!-- Monaco Editor -->
     <script>
         // Block browser shortcuts that break Blazor Hybrid (F5, Ctrl+R, etc.)
+        // F5 handler - can be overridden by registering window.onF5Pressed
+        window.scriptEditorRef = null;
+        window.registerScriptEditorF5 = function(dotNetRef) {
+            window.scriptEditorRef = dotNetRef;
+        };
+        window.unregisterScriptEditorF5 = function() {
+            window.scriptEditorRef = null;
+        };
+
         document.addEventListener('keydown', function(e) {
-            if (e.key === 'F5' ||
-                (e.ctrlKey && (e.key === 'r' || e.key === 'R')) ||
+            if (e.key === 'F5') {
+                e.preventDefault();
+                e.stopPropagation();
+                // If script editor is registered, run the script
+                if (window.scriptEditorRef) {
+                    window.scriptEditorRef.invokeMethodAsync('RunScriptFromJs');
+                }
+                return false;
+            }
+            if ((e.ctrlKey && (e.key === 'r' || e.key === 'R')) ||
                 (e.ctrlKey && (e.key === 'w' || e.key === 'W'))) {
                 e.preventDefault();
                 e.stopPropagation();

@@ -1,0 +1,267 @@
+@inject IAISettingsService SettingsService
+@inject IClaudeService ClaudeService
+
+<div class="ai-settings-panel">
+    <div class="settings-header">
+        <h2>AI Settings</h2>
+        <p class="settings-description">Configure the Claude AI integration</p>
+    </div>
+
+    <div class="settings-content">
+        <!-- API Key Section -->
+        <div class="settings-section">
+            <h3>API Key</h3>
+            <div class="api-key-input-group">
+                <div class="input-wrapper">
+                    <input type="@(_showApiKey ? "text" : "password")"
+                           class="settings-input api-key-input"
+                           placeholder="Enter your Claude API key"
+                           @bind="_apiKeyInput"
+                           @bind:event="oninput" />
+                    <button class="icon-btn toggle-visibility" @onclick="ToggleApiKeyVisibility" title="@(_showApiKey ? "Hide" : "Show")">
+                        @if (_showApiKey)
+                        {
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                <path d="M13.359 11.238C15.06 9.72 16 8 16 8s-3-5.5-8-5.5a7.028 7.028 0 0 0-2.79.588l.77.771A5.944 5.944 0 0 1 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.134 13.134 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755-.165.165-.337.328-.517.486l.708.709z"/>
+                                <path d="M11.297 9.176a3.5 3.5 0 0 0-4.474-4.474l.823.823a2.5 2.5 0 0 1 2.829 2.829l.822.822zm-2.943 1.299.822.822a3.5 3.5 0 0 1-4.474-4.474l.823.823a2.5 2.5 0 0 0 2.829 2.829z"/>
+                                <path d="M3.35 5.47c-.18.16-.353.322-.518.487A13.134 13.134 0 0 0 1.172 8l.195.288c.335.48.83 1.12 1.465 1.755C4.121 11.332 5.881 12.5 8 12.5c.716 0 1.39-.133 2.02-.36l.77.772A7.029 7.029 0 0 1 8 13.5C3 13.5 0 8 0 8s.939-1.721 2.641-3.238l.708.709zm10.296 8.884-12-12 .708-.708 12 12-.708.708z"/>
+                            </svg>
+                        }
+                        else
+                        {
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/>
+                                <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/>
+                            </svg>
+                        }
+                    </button>
+                </div>
+                <div class="api-key-actions">
+                    <button class="btn btn-primary" @onclick="SaveApiKey" disabled="@(string.IsNullOrEmpty(_apiKeyInput) || _isTesting)">
+                        Save Key
+                    </button>
+                    <button class="btn btn-secondary" @onclick="TestApiKey" disabled="@(string.IsNullOrEmpty(_apiKeyInput) || _isTesting)">
+                        @if (_isTesting)
+                        {
+                            <span>Testing...</span>
+                        }
+                        else
+                        {
+                            <span>Test</span>
+                        }
+                    </button>
+                    @if (SettingsService.HasApiKey)
+                    {
+                        <button class="btn btn-danger" @onclick="ClearApiKey">Clear</button>
+                    }
+                </div>
+            </div>
+            @if (!string.IsNullOrEmpty(_apiKeyMessage))
+            {
+                <div class="api-key-message @(_apiKeySuccess ? "success" : "error")">
+                    @_apiKeyMessage
+                </div>
+            }
+            @if (SettingsService.HasApiKey && string.IsNullOrEmpty(_apiKeyInput))
+            {
+                <div class="api-key-status">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" class="status-icon success">
+                        <path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+                    </svg>
+                    API key is configured
+                </div>
+            }
+        </div>
+
+        <!-- Model Selection -->
+        <div class="settings-section">
+            <h3>Model</h3>
+            <div class="model-options">
+                @foreach (var model in ClaudeModels.All)
+                {
+                    <label class="model-option @(_settings.Model == model ? "selected" : "")">
+                        <input type="radio"
+                               name="model"
+                               value="@model"
+                               checked="@(_settings.Model == model)"
+                               @onchange="() => SelectModel(model)" />
+                        <div class="model-info">
+                            <span class="model-name">@ClaudeModels.GetDisplayName(model)</span>
+                            <span class="model-id">@model</span>
+                        </div>
+                    </label>
+                }
+            </div>
+        </div>
+
+        <!-- Temperature -->
+        <div class="settings-section">
+            <h3>Temperature</h3>
+            <p class="setting-hint">Lower values produce more focused output, higher values more creative</p>
+            <div class="slider-group">
+                <input type="range"
+                       class="settings-slider"
+                       min="0"
+                       max="1"
+                       step="0.1"
+                       @bind="_settings.Temperature"
+                       @bind:event="oninput"
+                       @bind:after="SaveSettings" />
+                <span class="slider-value">@_settings.Temperature.ToString("F1")</span>
+            </div>
+        </div>
+
+        <!-- Max Tokens -->
+        <div class="settings-section">
+            <h3>Max Tokens</h3>
+            <p class="setting-hint">Maximum length of AI responses (256 - 8192)</p>
+            <div class="number-input-group">
+                <input type="number"
+                       class="settings-input number-input"
+                       min="256"
+                       max="8192"
+                       step="256"
+                       @bind="_settings.MaxTokens"
+                       @bind:after="SaveSettings" />
+                <div class="quick-values">
+                    <button class="quick-btn" @onclick="() => SetMaxTokens(1024)">1K</button>
+                    <button class="quick-btn" @onclick="() => SetMaxTokens(2048)">2K</button>
+                    <button class="quick-btn" @onclick="() => SetMaxTokens(4096)">4K</button>
+                    <button class="quick-btn" @onclick="() => SetMaxTokens(8192)">8K</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- System Prompt -->
+        <div class="settings-section">
+            <h3>System Prompt</h3>
+            <p class="setting-hint">Base instructions for the AI assistant</p>
+            <textarea class="settings-textarea"
+                      rows="8"
+                      @bind="_settings.SystemPrompt"
+                      @bind:after="SaveSettings"></textarea>
+            <div class="prompt-actions">
+                <button class="btn btn-secondary" @onclick="ResetSystemPrompt">Reset to Default</button>
+            </div>
+        </div>
+
+        <!-- Streaming -->
+        <div class="settings-section">
+            <label class="checkbox-option">
+                <input type="checkbox"
+                       @bind="_settings.StreamResponses"
+                       @bind:after="SaveSettings" />
+                <span class="checkbox-label">
+                    <strong>Stream Responses</strong>
+                    <span class="checkbox-hint">Show AI responses as they're generated</span>
+                </span>
+            </label>
+        </div>
+    </div>
+</div>
+
+@code {
+    private AISettings _settings = new();
+    private string _apiKeyInput = "";
+    private bool _showApiKey;
+    private bool _isTesting;
+    private string? _apiKeyMessage;
+    private bool _apiKeySuccess;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await SettingsService.LoadAsync();
+        _settings = new AISettings
+        {
+            Model = SettingsService.Settings.Model,
+            Temperature = SettingsService.Settings.Temperature,
+            MaxTokens = SettingsService.Settings.MaxTokens,
+            SystemPrompt = SettingsService.Settings.SystemPrompt,
+            StreamResponses = SettingsService.Settings.StreamResponses
+        };
+    }
+
+    private void ToggleApiKeyVisibility()
+    {
+        _showApiKey = !_showApiKey;
+    }
+
+    private async Task SaveApiKey()
+    {
+        if (string.IsNullOrEmpty(_apiKeyInput)) return;
+
+        try
+        {
+            await SettingsService.SetApiKeyAsync(_apiKeyInput);
+            _apiKeyMessage = "API key saved successfully";
+            _apiKeySuccess = true;
+            _apiKeyInput = "";
+        }
+        catch (Exception ex)
+        {
+            _apiKeyMessage = $"Failed to save: {ex.Message}";
+            _apiKeySuccess = false;
+        }
+
+        StateHasChanged();
+        await Task.Delay(3000);
+        _apiKeyMessage = null;
+        StateHasChanged();
+    }
+
+    private async Task TestApiKey()
+    {
+        if (string.IsNullOrEmpty(_apiKeyInput)) return;
+
+        _isTesting = true;
+        _apiKeyMessage = null;
+        StateHasChanged();
+
+        var isValid = await ClaudeService.ValidateApiKeyAsync(_apiKeyInput);
+
+        _apiKeyMessage = isValid ? "API key is valid!" : "Invalid API key";
+        _apiKeySuccess = isValid;
+        _isTesting = false;
+        StateHasChanged();
+
+        await Task.Delay(3000);
+        _apiKeyMessage = null;
+        StateHasChanged();
+    }
+
+    private async Task ClearApiKey()
+    {
+        await SettingsService.ClearApiKeyAsync();
+        _apiKeyInput = "";
+        _apiKeyMessage = "API key cleared";
+        _apiKeySuccess = true;
+        StateHasChanged();
+
+        await Task.Delay(2000);
+        _apiKeyMessage = null;
+        StateHasChanged();
+    }
+
+    private void SelectModel(string model)
+    {
+        _settings.Model = model;
+        _ = SaveSettings();
+    }
+
+    private void SetMaxTokens(int tokens)
+    {
+        _settings.MaxTokens = tokens;
+        _ = SaveSettings();
+    }
+
+    private void ResetSystemPrompt()
+    {
+        _settings.SystemPrompt = AISettings.DefaultSystemPrompt;
+        _ = SaveSettings();
+    }
+
+    private async Task SaveSettings()
+    {
+        await SettingsService.SaveSettingsAsync(_settings);
+    }
+}

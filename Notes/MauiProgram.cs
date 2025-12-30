@@ -3,14 +3,25 @@ using Microsoft.Extensions.Logging;
 using Notes.Data;
 using Notes.Modules.Services;
 using Notes.Services;
+using Notes.Services.AI;
 using Notes.Services.IntelliSense;
 
 namespace Notes;
 
 public static class MauiProgram
 {
+    private static readonly string LogPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "Notes", "startup.log");
+
+    private static void Log(string message)
+    {
+        try { File.AppendAllText(LogPath, $"{DateTime.Now}: [MauiProgram] {message}\n"); } catch { }
+    }
+
     public static MauiApp CreateMauiApp()
     {
+        Log("CreateMauiApp started");
         var builder = MauiApp.CreateBuilder();
         builder
             .UseMauiApp<App>()
@@ -85,7 +96,15 @@ public static class MauiProgram
         builder.Services.AddSingleton<IPortService, PortService>();
         builder.Services.AddSingleton<ICommandService, CommandService>();
 
+        // AI Services
+        Log("Registering AI services");
+        builder.Services.AddSingleton<IAISettingsService, AISettingsService>();
+        builder.Services.AddSingleton<IClaudeService, ClaudeService>();
+        builder.Services.AddSingleton<IScriptEditorState, ScriptEditorState>();
+
+        Log("Building app");
         var app = builder.Build();
+        Log("App built successfully");
 
         // ==========================================
         // Post-Build Initialization
@@ -119,6 +138,8 @@ public static class MauiProgram
         var navigationService = app.Services.GetRequiredService<INavigationService>();
         moduleManager.RegisterModuleNavigationItems(navigationService);
 
+        // AI settings will load lazily when first accessed
+        Log("CreateMauiApp completed successfully");
         return app;
     }
 }

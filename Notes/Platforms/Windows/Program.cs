@@ -6,23 +6,57 @@ namespace Notes.WinUI;
 
 public static class Program
 {
+    private static readonly string LogPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "Notes", "startup.log");
+
+    private static void Log(string message)
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(LogPath);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
+            File.AppendAllText(LogPath, $"{DateTime.Now}: {message}\n");
+        }
+        catch { }
+    }
+
     [STAThread]
     static int Main(string[] args)
     {
-        WinRT.ComWrappersSupport.InitializeComWrappers();
-
-        bool isRedirect = DecideRedirection();
-        if (!isRedirect)
+        Log($"Main started, PID={Environment.ProcessId}");
+        try
         {
-            Microsoft.UI.Xaml.Application.Start((p) =>
+            WinRT.ComWrappersSupport.InitializeComWrappers();
+            Log("ComWrappers initialized");
+
+            bool isRedirect = DecideRedirection();
+            Log($"isRedirect={isRedirect}");
+
+            if (!isRedirect)
             {
-                var context = new DispatcherQueueSynchronizationContext(
-                    DispatcherQueue.GetForCurrentThread());
-                SynchronizationContext.SetSynchronizationContext(context);
-                new App();
-            });
+                Log("Starting application...");
+                Microsoft.UI.Xaml.Application.Start((p) =>
+                {
+                    Log("Inside Application.Start callback");
+                    var context = new DispatcherQueueSynchronizationContext(
+                        DispatcherQueue.GetForCurrentThread());
+                    SynchronizationContext.SetSynchronizationContext(context);
+                    Log("Creating App instance");
+                    new App();
+                    Log("App instance created");
+                });
+                Log("Application.Start completed");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log($"EXCEPTION: {ex}");
+            throw;
         }
 
+        Log($"Main exiting, PID={Environment.ProcessId}");
         return 0;
     }
 

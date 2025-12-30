@@ -25,15 +25,26 @@
     </div>
 
     <div class="rail-footer">
+        <button class="rail-item ai-chat-item @(IsChatOpen ? "active" : "")"
+                @onclick="ToggleAIChat"
+                title="@(NavigationService.IsRailExpanded ? "" : "AI Assistant")">
+            <span class="rail-icon">
+                <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M7.657 6.247c.11-.33.576-.33.686 0l.645 1.937a2.89 2.89 0 0 0 1.828 1.828l1.937.645c.33.11.33.576 0 .686l-1.937.645a2.89 2.89 0 0 0-1.828 1.828l-.645 1.937a.361.361 0 0 1-.686 0l-.645-1.937a2.89 2.89 0 0 0-1.828-1.828l-1.937-.645a.361.361 0 0 1 0-.686l1.937-.645a2.89 2.89 0 0 0 1.828-1.828l.645-1.937zM3.794 1.148a.217.217 0 0 1 .412 0l.387 1.162c.173.518.579.924 1.097 1.097l1.162.387a.217.217 0 0 1 0 .412l-1.162.387A1.734 1.734 0 0 0 4.593 5.69l-.387 1.162a.217.217 0 0 1-.412 0L3.407 5.69a1.734 1.734 0 0 0-1.097-1.097l-1.162-.387a.217.217 0 0 1 0-.412l1.162-.387A1.734 1.734 0 0 0 3.407 2.31l.387-1.162zM10.863.099a.145.145 0 0 1 .274 0l.258.774c.115.346.386.617.732.732l.774.258a.145.145 0 0 1 0 .274l-.774.258a1.156 1.156 0 0 0-.732.732l-.258.774a.145.145 0 0 1-.274 0l-.258-.774a1.156 1.156 0 0 0-.732-.732L9.1 2.137a.145.145 0 0 1 0-.274l.774-.258c.346-.115.617-.386.732-.732L10.863.099z"/>
+                </svg>
+            </span>
+            <span class="rail-label">AI Chat</span>
+        </button>
         <button class="rail-item search-item"
                 @onclick="OpenCommandPalette"
                 title="@(NavigationService.IsRailExpanded ? "" : "Command Palette (Ctrl+Shift+K)")">
             <span class="rail-icon">
                 <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
-                    <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
+                    <path d="M0 3a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3zm2-1a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1H2z"/>
+                    <path d="M3.5 6L6 8.5 3.5 11l-.707-.707L5.086 8.5 2.793 6.707 3.5 6zm4.5 5h4v1H8v-1z"/>
                 </svg>
             </span>
-            <span class="rail-label">Search</span>
+            <span class="rail-label">Commands</span>
         </button>
         @if (_showPinButton)
         {
@@ -80,12 +91,20 @@
 </nav>
 
 @code {
+    [Parameter] public EventCallback OnAIChatToggle { get; set; }
+    [Parameter] public bool IsChatOpen { get; set; }
+
     private bool _isPinned = true;
     private bool _showPinButton;
 
 #if WINDOWS
     [Inject] private TrayService? TrayService { get; set; }
 #endif
+
+    private async Task ToggleAIChat()
+    {
+        await OnAIChatToggle.InvokeAsync();
+    }
 
     protected override void OnInitialized()
     {
